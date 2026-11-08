@@ -54,7 +54,13 @@ final class MealDraft {
     if (status == DraftStatus.committed || status == DraftStatus.cancelled) {
       throw StateError('DRAFT_CLOSED');
     }
-    return MealDraft(id: id, revision: revision + 1, values: replacement);
+    return MealDraft(
+        id: id,
+        revision: revision + 1,
+        status: status == DraftStatus.review
+            ? DraftStatus.review
+            : DraftStatus.editing,
+        values: replacement);
   }
 
   MealDraft receive(
@@ -85,11 +91,76 @@ final class MealDraft {
         values: values);
   }
 
-  MealDraft cancel() => MealDraft(
-      id: id,
-      revision: revision + 1,
-      status: DraftStatus.cancelled,
-      values: values);
+  MealDraft cancel() {
+    if (status == DraftStatus.committed || status == DraftStatus.cancelled) {
+      throw StateError('DRAFT_CLOSED');
+    }
+    return MealDraft(
+        id: id,
+        revision: revision + 1,
+        status: DraftStatus.cancelled,
+        values: values);
+  }
+}
+
+/// Owns the current draft while a provider response is in flight. Only an
+/// explicitly validated response can be placed in the review state.
+/// Editing or cancelling invalidates an outstanding result; retries require a
+/// new explicit request and consent. This object never writes a diary entry.
+final class InferenceDraftSession {
+  InferenceDraftSession(MealDraft draft) : _draft = draft;
+
+  MealDraft _draft;
+  bool _inFlight = false;
+  MealDraft get draft => _draft;
+  bool get inFlight => _inFlight;
+
+  void edit(Map<String, Object?> replacement) {
+    _draft = _draft.edit(replacement);
+  }
+
+  void cancel() {
+    _draft = _draft.cancel();
+  }
+
+  void confirm({required int expectedRevision, required bool reviewed}) {
+    _draft =
+        _draft.confirm(expectedRevision: expectedRevision, reviewed: reviewed);
+  }
+
+  Future<void> requestSuggestion({
+    required InferenceProvider provider,
+    required ProviderAuthorization authorization,
+    required InferenceRequest request,
+    required TransferConsent consent,
+    required DateTime now,
+    required Map<String, Object?> Function(Map<String, Object?>) validate,
+  }) async {
+    if (_inFlight) throw StateError('REQUEST_IN_FLIGHT');
+    final origin = _draft;
+    _inFlight = true;
+    try {
+      final response = await const ReviewedInferenceService().request(
+        provider: provider,
+        authorization: authorization,
+        request: request,
+        draft: origin,
+        consent: consent,
+        now: now,
+      );
+      if (_draft.revision != origin.revision ||
+          _draft.id != origin.id ||
+          _draft.status == DraftStatus.cancelled ||
+          _draft.status == DraftStatus.committed) {
+        throw StateError('STALE_DRAFT');
+      }
+      final validated = validate(response.structured!);
+      _draft = _draft.receive(
+          expectedRevision: origin.revision, suggestion: validated);
+    } finally {
+      _inFlight = false;
+    }
+  }
 }
 
 final class ProviderAuthorization {

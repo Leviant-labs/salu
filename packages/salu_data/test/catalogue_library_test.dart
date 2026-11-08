@@ -63,6 +63,34 @@ void main() {
     db.ftsAvailable = false;
     expect((await foods.search('pera')).single.id, 'test:apple');
   });
+  test('search considers matches beyond the first 200 before filtering and ranking',
+      () async {
+    Food match(String id, Preparation preparation, List<String> regions) => Food(
+        id: id,
+        name: 'Oat',
+        per100g: const NutrientProfile.empty(),
+        source: FoodSource(dataset: 'test', datasetId: id),
+        preparation: preparation,
+        regions: regions);
+    await foods.replaceCatalogueBatch([
+      for (var i = 0; i < 205; i++)
+        match('test:${i.toString().padLeft(3, '0')}', Preparation.raw, []),
+      match('test:zzz', Preparation.cooked, ['PT']),
+    ]);
+    final cooked = await foods.searchCatalogue(
+        CatalogueQuery('oat', preparation: Preparation.cooked));
+    expect(cooked.map((f) => f.id), ['test:zzz']);
+    final regional = await foods
+        .searchCatalogue(CatalogueQuery('oat', region: 'PT', limit: 1));
+    expect(regional.single.id, 'test:zzz');
+    db.ftsAvailable = false;
+    expect(
+        (await foods.searchCatalogue(
+                CatalogueQuery('oat', preparation: Preparation.cooked)))
+            .single
+            .id,
+        'test:zzz');
+  });
   test(
       'favorite retry checks original payload, preserves newer state and retired snapshot',
       () async {

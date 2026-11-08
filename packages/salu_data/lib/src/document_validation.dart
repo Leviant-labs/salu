@@ -1,9 +1,23 @@
+import 'dart:convert';
+
 import 'package:salu_core/salu_core.dart';
+
+import 'health_outbox_store.dart';
 import 'snapshot_codec.dart';
 
 /// Validate domain shapes before writes and before any restore can reach live data.
 void validateUserDocument(String collection, Map<String, Object?> data) {
   switch (collection) {
+    case 'health-outbox':
+      decodeHealthOutbox(data['id']! as String, jsonEncode(data));
+    case 'meal-draft-v1':
+      final status = DraftStatus.values.byName(data['status']! as String);
+      if (data['values'] is! Map ||
+          (status == DraftStatus.committed &&
+              (data['confirmationRequestId'] is! String ||
+                  (data['confirmationRequestId']! as String).isEmpty))) {
+        throw const FormatException('Invalid draft');
+      }
     case 'favorite-food':
       if (data['favorite'] is! bool) {
         throw const FormatException('Invalid favourite flag');

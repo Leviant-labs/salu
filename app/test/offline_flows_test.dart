@@ -33,6 +33,85 @@ Future<void> pump(WidgetTester t, AppDatabase db, Widget child,
 }
 
 void main() {
+  testWidgets('check-in shows recorded fibre coverage without adequacy claims',
+      (t) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final now = DateTime.now();
+    final stamp =
+        EventStamp(instant: now, offsetMinutes: now.timeZoneOffset.inMinutes);
+    await DriftEntryRepository(db).append(LoggedEntry(
+        id: 'coverage-entry',
+        requestId: 'coverage-request',
+        diaryDate: DiaryDate.assign(stamp),
+        stamp: stamp,
+        channel: EntryChannel.manual,
+        recordedAt: now,
+        items: [
+          LoggedItem(
+              name: 'Known',
+              grams: 10,
+              nutrients:
+                  NutrientProfile({NutrientKey.fiberG: NutrientReported(0)})),
+          LoggedItem(
+              name: 'Unknown',
+              grams: 10,
+              nutrients: const NutrientProfile.empty()),
+        ]));
+    await pump(t, db, const TodayScreen());
+    await t.ensureVisible(find.text('Weekly check-in'));
+    await t.tap(find.text('Weekly check-in'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('1 reported, 0 estimated, 0 trace, 1 unknown'),
+        findsOneWidget);
+    expect(find.textContaining('does not assess adequacy'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('weekly check-in reports an empty week as missing data',
+      (t) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    await pump(t, db, const TodayScreen());
+    await t.ensureVisible(find.text('Weekly check-in'));
+    await t.tap(find.text('Weekly check-in'));
+    await t.pumpAndSettle();
+    expect(
+        find.textContaining('7 incomplete or not declared.'), findsOneWidget);
+    expect(find.textContaining('Missing days are never counted as zero.'),
+        findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('check-in describes observed weight without attributing a cause',
+      (t) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final now = DateTime.now();
+    final workspace = LocalWorkspace(db);
+    for (final item in [
+      (id: 'early', at: now.subtract(const Duration(days: 1)), kg: '71'),
+      (id: 'late', at: now, kg: '70')
+    ]) {
+      await workspace.put(
+          requestId: item.id,
+          collection: 'weight',
+          id: item.id,
+          expectedRevision: 0,
+          data: {
+            'value': Exact.parse(item.kg).toJson(),
+            'unit': 'kg',
+            'time': item.at.toUtc().toIso8601String(),
+            'offsetMinutes': item.at.timeZoneOffset.inMinutes
+          });
+    }
+    await pump(t, db, const TodayScreen());
+    await t.ensureVisible(find.text('Weekly check-in'));
+    await t.tap(find.text('Weekly check-in'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('last recorded weight in this window is lower'),
+        findsOneWidget);
+    expect(find.textContaining('does not measure fat change'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets('offline catalogue selection logs chosen volume with no density',
       (t) async {
     final db = AppDatabase.memory();

@@ -333,6 +333,9 @@ enum ComparisonStatus {
   recordedOutsideRange,
   recordedAboveGuidance,
   recordedNotAboveGuidance,
+
+  /// Reported items alone exceed a maximum; the total remains incomplete.
+  recordedItemsAlreadyExceedGuidance,
   insufficientData,
   referenceNotApplicable
 }
@@ -366,13 +369,22 @@ final class ReferenceComparisonService {
         temporalBasis != reference.temporalBasis) {
       return ComparisonStatus.referenceNotApplicable;
     }
-    if (!summary.permitsComparison) return ComparisonStatus.insufficientData;
-    final value = summary.recordedSum!;
     if (reference.kind == ReferenceKind.maximumGuidance ||
         reference.kind == ReferenceKind.ul) {
-      if (reference.upper == null) {
+      if (reference.upper == null ||
+          reference.upper!.compareTo(Exact.zero) < 0) {
         return ComparisonStatus.referenceNotApplicable;
       }
+      if (!summary.permitsComparison) {
+        if (summary.known > 0 &&
+            summary.estimated == 0 &&
+            summary.recordedSum != null &&
+            summary.recordedSum!.compareTo(reference.upper!) > 0) {
+          return ComparisonStatus.recordedItemsAlreadyExceedGuidance;
+        }
+        return ComparisonStatus.insufficientData;
+      }
+      final value = summary.recordedSum!;
       return value.compareTo(reference.upper!) > 0
           ? ComparisonStatus.recordedAboveGuidance
           : ComparisonStatus.recordedNotAboveGuidance;
@@ -382,14 +394,24 @@ final class ReferenceComparisonService {
       return ComparisonStatus.referenceNotApplicable;
     }
     if (reference.kind == ReferenceKind.riRange) {
-      return (reference.lower != null &&
-              reference.upper != null &&
-              value.compareTo(reference.lower!) >= 0 &&
+      if (reference.lower == null ||
+          reference.upper == null ||
+          reference.lower!.compareTo(Exact.zero) < 0 ||
+          reference.lower!.compareTo(reference.upper!) > 0) {
+        return ComparisonStatus.referenceNotApplicable;
+      }
+      if (!summary.permitsComparison) return ComparisonStatus.insufficientData;
+      final value = summary.recordedSum!;
+      return (value.compareTo(reference.lower!) >= 0 &&
               value.compareTo(reference.upper!) <= 0)
           ? ComparisonStatus.recordedWithinRange
           : ComparisonStatus.recordedOutsideRange;
     }
-    if (reference.lower == null) return ComparisonStatus.referenceNotApplicable;
+    if (reference.lower == null || reference.lower!.compareTo(Exact.zero) < 0) {
+      return ComparisonStatus.referenceNotApplicable;
+    }
+    if (!summary.permitsComparison) return ComparisonStatus.insufficientData;
+    final value = summary.recordedSum!;
     return value.compareTo(reference.lower!) < 0
         ? ComparisonStatus.recordedBelowReference
         : ComparisonStatus.recordedAtOrAboveReference;

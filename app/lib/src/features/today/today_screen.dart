@@ -284,23 +284,45 @@ class TodayScreen extends ConsumerWidget {
     try {
       final w = LocalWorkspace(ref.read(databaseProvider));
       final days = <CoachingDay>[];
+      final entries = <LoggedEntry>[];
       for (var i = 6; i >= 0; i--) {
         final d = DateTime.utc(date.year, date.month, date.day)
             .subtract(Duration(days: i));
-        final key = DiaryDate(d.year, d.month, d.day).toIso();
+        final diaryDate = DiaryDate(d.year, d.month, d.day);
+        final key = diaryDate.toIso();
+        entries.addAll(
+            await ref.read(entryRepositoryProvider).entriesFor(diaryDate));
         final record = await w.read('day', key);
+        if (record == null) continue;
         days.add(CoachingDay(
             date: key,
-            revision: record?.revision ?? 0,
+            revision: record.revision,
             completeness: DiaryCompleteness.values
-                .byName(record?.data['completeness'] as String? ?? 'unknown')));
+                .byName(record.data['completeness'] as String? ?? 'unknown')));
       }
       final profile = await w.read('profile', 'safety');
+      final showWeight = ref.read(settingsProvider)['support'] != true;
+      final weights = showWeight ? await w.list('weight') : <StoredDocument>[];
       final result = const CoachingService().checkIn(
           profile == null
               ? const SafetyProfile()
               : SafetyProfile.fromJson(profile.data),
-          days);
+          days,
+          window: CoachingWindow(date.addDays(-6), date),
+          entries: entries,
+          weights: [
+            for (final weight in weights)
+              if (weight.data['offsetMinutes'] is int)
+                CoachingWeight(
+                  id: weight.id,
+                  revision: weight.revision,
+                  stamp: EventStamp(
+                      instant: DateTime.parse(weight.data['time']! as String),
+                      offsetMinutes: weight.data['offsetMinutes']! as int),
+                  kilograms: Exact.fromJson(
+                      Map<String, Object?>.from(weight.data['value']! as Map)),
+                )
+          ]);
       await w.reward('checkin:${date.toIso()}');
       if (!context.mounted) return;
       await showDialog<void>(
@@ -333,7 +355,52 @@ class TodayScreen extends ConsumerWidget {
                                     'Your day records are declared complete. You can keep your current approach without changing targets. This does not establish nutritional adequacy.',
                                     'Os dias estão declarados completos. Podes manter a abordagem sem alterar metas. Isto não estabelece adequação nutricional.')
                               })),
-                        Text('\n${days.first.date} — ${days.last.date}')
+                        const SizedBox(height: 16),
+                        Text(
+                            '${result.window!.start.toIso()} — ${result.window!.end.toIso()}'),
+                        Text(tr(
+                            c,
+                            '${result.quality.completeDays} days declared complete; ${result.quality.confirmedNoIntakeDays} declared no intake; ${result.quality.partialDays + result.quality.unknownDays + result.quality.missingDates.length} incomplete or not declared.',
+                            '${result.quality.completeDays} dias declarados completos; ${result.quality.confirmedNoIntakeDays} declarados sem ingestão; ${result.quality.partialDays + result.quality.unknownDays + result.quality.missingDates.length} incompletos ou não declarados.')),
+                        if (result.fibreCoverage case final coverage?) ...[
+                          const SizedBox(height: 16),
+                          Text(tr(
+                              c,
+                              'Fibre in recorded items: ${coverage.reported} reported, ${coverage.estimated} estimated, ${coverage.trace} trace, ${coverage.unknown} unknown. Missing food and nutrient values do not count as zero; this does not assess adequacy.',
+                              'Fibra nos alimentos registados: ${coverage.reported} declarados, ${coverage.estimated} estimados, ${coverage.trace} vestígios, ${coverage.unknown} desconhecidos. Alimentos e valores em falta não contam como zero; isto não avalia a adequação.')),
+                        ],
+                        if (showWeight && result.weightObservation != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Text(result.weightObservation!.changeKg
+                                        .compareTo(Exact.zero) ==
+                                    0
+                                ? tr(
+                                    c,
+                                    'The first and last recorded weights in this window are equal.',
+                                    'O primeiro e o último peso registados neste período são iguais.')
+                                : result.weightObservation!.changeKg.positive
+                                    ? tr(
+                                        c,
+                                        'The last recorded weight in this window is higher than the first.',
+                                        'O último peso registado neste período é superior ao primeiro.')
+                                    : tr(
+                                        c,
+                                        'The last recorded weight in this window is lower than the first.',
+                                        'O último peso registado neste período é inferior ao primeiro.')),
+                          ),
+                        if (showWeight && result.weightObservation != null)
+                          Text(tr(
+                              c,
+                              'Scale readings can fluctuate; this comparison does not measure fat change or establish its cause.',
+                              'O peso pode variar; esta comparação não mede alterações de gordura nem estabelece a sua causa.')),
+                        if (showWeight &&
+                            result.weightObservation == null &&
+                            result.weightInputRevisions.isNotEmpty)
+                          Text(tr(
+                              c,
+                              'There are not enough distinct, ordered weight readings to compare in this period.',
+                              'Não há registos de peso suficientes, distintos e ordenados, para comparar neste período.')),
                       ])),
                   actions: [
                     TextButton(

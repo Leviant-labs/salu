@@ -14,6 +14,7 @@ const userCollections = {
   'plan',
   'groceries',
   'draft',
+  'meal-draft-v1',
   'day',
   'water',
   'weight',
@@ -21,7 +22,8 @@ const userCollections = {
   'fast',
   'reward',
   'entry-revision',
-  'checkin'
+  'checkin',
+  'health-outbox'
 };
 
 final class StoredDocument {

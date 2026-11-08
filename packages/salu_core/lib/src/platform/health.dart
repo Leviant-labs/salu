@@ -121,3 +121,142 @@ abstract interface class HealthPort {
   /// Deletes the record previously written for [externalId], if present.
   Future<void> deleteNutrition(String externalId);
 }
+
+/// State that must be persisted by an outbox implementation across restarts.
+enum HealthOutboxState {
+  pending,
+  synced,
+  externallyDeleted,
+  externallyEdited,
+
+  /// Restored backup: remote state and authorization must be reviewed.
+  restoreReviewRequired,
+}
+
+/// A confirmed nutrition export and its reconciliation state.
+final class HealthOutboxItem {
+  const HealthOutboxItem(this.write, this.state);
+  final NutritionWrite write;
+  final HealthOutboxState state;
+}
+
+/// Durable storage for one item per stable app-side export identifier.
+///
+/// The caller must serialize access to the same identifier. Implementations must
+/// persist an item before returning, and enumerate pending items on restart.
+abstract interface class HealthOutboxStore {
+  Future<HealthOutboxItem?> get(String id);
+  Future<void> put(HealthOutboxItem item);
+}
+
+/// An explicit deletion or edit reported by a platform change feed.
+enum HealthExternalChange { deleted, edited }
+
+/// Outcome of attempting one queued export.
+enum HealthDispatchResult {
+  sent,
+  alreadySynced,
+  permissionDenied,
+  unsupported,
+  retryLater,
+  needsReview,
+  notQueued,
+}
+
+/// Coordinates confirmed exports with a durable, caller-provided outbox.
+///
+/// Run a single worker per export ID. Platform adapters must implement
+/// idempotent writes and report external changes before retrying a previously
+/// attempted export. A missing record alone is not proof of external deletion.
+final class HealthOutbox {
+  const HealthOutbox(this.port, this.store);
+  final HealthPort port;
+  final HealthOutboxStore store;
+
+  /// Queue an explicit user-confirmed record. An ID cannot be reused for
+  /// different content; retries preserve both content and reconciliation state.
+  Future<void> enqueueConfirmed(NutritionWrite write) async {
+    if (write.externalId.trim().isEmpty) {
+      throw ArgumentError.value(write.externalId, 'externalId');
+    }
+    for (final amount in [
+      write.energyKcal,
+      write.proteinG,
+      write.carbohydrateG,
+      write.fatG,
+    ]) {
+      if (amount != null && (!amount.isFinite || amount < 0)) {
+        throw ArgumentError(
+            'Exported nutrient amounts must be finite and non-negative');
+      }
+    }
+    final previous = await store.get(write.externalId);
+    if (previous != null) {
+      if (!_sameWrite(previous.write, write)) {
+        throw StateError('Export ID is already bound to different data');
+      }
+      return;
+    }
+    await store.put(HealthOutboxItem(write, HealthOutboxState.pending));
+  }
+
+  /// Apply a change from the platform's change feed before dispatching retries.
+  /// Neither edits nor deletions are automatically overwritten or resurrected.
+  Future<void> recordExternalChange(
+      String id, HealthExternalChange change) async {
+    final item = await store.get(id);
+    if (item == null) return;
+    final next = switch (change) {
+      HealthExternalChange.deleted => HealthOutboxState.externallyDeleted,
+      HealthExternalChange.edited => HealthOutboxState.externallyEdited,
+    };
+    // Once deleted, a late edit notification cannot undo the deletion marker.
+    if (item.state == HealthOutboxState.externallyDeleted) return;
+    await store.put(HealthOutboxItem(item.write, next));
+  }
+
+  /// Check support and authorization again for each dispatch, including retries.
+  /// Permission changes and offline failures leave the queued item untouched.
+  Future<HealthDispatchResult> dispatch(String id) async {
+    final item = await store.get(id);
+    if (item == null) return HealthDispatchResult.notQueued;
+    if (item.state == HealthOutboxState.synced) {
+      return HealthDispatchResult.alreadySynced;
+    }
+    if (item.state != HealthOutboxState.pending) {
+      return HealthDispatchResult.needsReview;
+    }
+    final required = <HealthDataType>{
+      HealthDataType.dietaryEnergy,
+      if (item.write.proteinG != null) HealthDataType.dietaryProtein,
+      if (item.write.carbohydrateG != null) HealthDataType.dietaryCarbohydrate,
+      if (item.write.fatG != null) HealthDataType.dietaryFat,
+    };
+    try {
+      final available = await port.availableTypes();
+      if (!available.containsAll(required)) {
+        return HealthDispatchResult.unsupported;
+      }
+      final access = await port.authorization(required);
+      if (access == HealthAccess.unavailable) {
+        return HealthDispatchResult.unsupported;
+      }
+      if (access != HealthAccess.granted) {
+        return HealthDispatchResult.permissionDenied;
+      }
+      await port.writeNutrition(item.write);
+      await store.put(HealthOutboxItem(item.write, HealthOutboxState.synced));
+      return HealthDispatchResult.sent;
+    } catch (_) {
+      return HealthDispatchResult.retryLater;
+    }
+  }
+
+  static bool _sameWrite(NutritionWrite a, NutritionWrite b) =>
+      a.externalId == b.externalId &&
+      a.startedAt == b.startedAt &&
+      a.energyKcal == b.energyKcal &&
+      a.proteinG == b.proteinG &&
+      a.carbohydrateG == b.carbohydrateG &&
+      a.fatG == b.fatG;
+}

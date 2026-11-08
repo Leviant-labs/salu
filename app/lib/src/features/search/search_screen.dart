@@ -5,6 +5,7 @@ import 'package:salu_data/salu_data.dart';
 import '../../providers.dart';
 import '../../intake_moment.dart';
 import 'saved_meals_screen.dart';
+import 'drafts_screen.dart';
 import '../../ui_support.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -66,6 +67,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 label:
                     Text(tr(c, 'Enter barcode', 'Introduzir código de barras')),
                 onPressed: () => _barcode(c)),
+            ActionChip(
+                label: Text(tr(c, 'Drafts', 'Rascunhos')),
+                onPressed: () => Navigator.of(c).push<void>(
+                    MaterialPageRoute(builder: (_) => const DraftsScreen()))),
             ActionChip(
                 label: Text(tr(c, 'Saved meals', 'Refeições guardadas')),
                 onPressed: () => Navigator.of(c).push<void>(MaterialPageRoute(
@@ -199,6 +204,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 instant: wall, offsetMinutes: wall.timeZoneOffset.inMinutes)));
     if (amount == null) return;
     try {
+      if (amount.saveDraft) {
+        final ids = ref.read(idGeneratorProvider);
+        final store = MealDraftStore(ref.read(databaseProvider));
+        final values = <String, Object?>{
+          'food': foodSnapshot(food),
+          'amount': amount.exact.toJson(),
+          'instant': amount.stamp.instantUtc.toIso8601String(),
+          'offset': amount.stamp.offsetMinutes,
+          'day': amount.day.toIso(),
+        };
+        final draft = await store.create(
+            id: ids.next(), requestId: ids.next(), values: values);
+        await store.receiveValidated(
+            id: draft.id,
+            requestId: ids.next(),
+            expectedRevision: draft.revision,
+            suggestion: values);
+        if (c.mounted) {
+          ScaffoldMessenger.of(c).showSnackBar(SnackBar(
+              content: Text(tr(c, 'Draft saved; nothing recorded',
+                  'Rascunho guardado; nada foi registado'))));
+        }
+        return;
+      }
       final result = await ref.read(logFoodHandlerProvider).handle(
           LogFoodCommand(
               requestId: ref.read(idGeneratorProvider).next(),
@@ -225,7 +254,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 }
 
 final class _RecordedQuantity {
-  _RecordedQuantity(this.quantity, this.exact, this.stamp, this.day);
+  _RecordedQuantity(this.quantity, this.exact, this.stamp, this.day,
+      {this.saveDraft = false});
+  final bool saveDraft;
   final Quantity quantity;
   final FoodAmount exact;
   final EventStamp stamp;
@@ -285,37 +316,43 @@ class _QuantityDialogState extends State<_QuantityDialog> {
             TextButton(
                 onPressed: () => Navigator.pop(c),
                 child: Text(tr(c, 'Cancel', 'Cancelar'))),
+            TextButton(
+                onPressed: () => submit(c, true),
+                child: Text(tr(c, 'Save draft', 'Guardar rascunho'))),
             FilledButton(
-                onPressed: () {
-                  try {
-                    final value = Exact.parse(text.text.replaceAll(',', '.'));
-                    if (!value.positive) throw ArgumentError();
-                    final n = value.toDouble();
-                    final quantity = switch (unit) {
-                      FoodUnit.g => MassQuantity(n),
-                      FoodUnit.ml => VolumeQuantity(n),
-                      FoodUnit.item => PieceQuantity(n),
-                      FoodUnit.serving => ServingQuantity(n)
-                    };
-                    Navigator.pop(
-                        c,
-                        _RecordedQuantity(
-                            quantity,
-                            FoodAmount.exact(value, unit,
-                                measureId: unit == FoodUnit.item
-                                    ? 'piece'
-                                    : unit == FoodUnit.serving
-                                        ? 'serving'
-                                        : null),
-                            moment.stamp,
-                            moment.diaryDate));
-                  } catch (_) {
-                    setState(() => error = tr(c, 'Enter a positive quantity',
-                        'Introduz uma quantidade positiva'));
-                  }
-                },
+                onPressed: () => submit(c, false),
                 child: Text(tr(c, 'Confirm intake', 'Confirmar consumo')))
           ]);
+
+  void submit(BuildContext c, bool saveDraft) {
+    try {
+      final value = Exact.parse(text.text.replaceAll(',', '.'));
+      if (!value.positive) throw ArgumentError();
+      final n = value.toDouble();
+      final quantity = switch (unit) {
+        FoodUnit.g => MassQuantity(n),
+        FoodUnit.ml => VolumeQuantity(n),
+        FoodUnit.item => PieceQuantity(n),
+        FoodUnit.serving => ServingQuantity(n)
+      };
+      Navigator.pop(
+          c,
+          _RecordedQuantity(
+              quantity,
+              FoodAmount.exact(value, unit,
+                  measureId: unit == FoodUnit.item
+                      ? 'piece'
+                      : unit == FoodUnit.serving
+                          ? 'serving'
+                          : null),
+              moment.stamp,
+              moment.diaryDate,
+              saveDraft: saveDraft));
+    } catch (_) {
+      setState(() => error = tr(
+          c, 'Enter a positive quantity', 'Introduz uma quantidade positiva'));
+    }
+  }
 }
 
 class CustomFoodScreen extends ConsumerStatefulWidget {

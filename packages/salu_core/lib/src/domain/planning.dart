@@ -214,14 +214,28 @@ final class MealSlot {
   final String id, date, label;
 }
 
+/// Reservation of finite cooked stock. The allocation ID links a meal to an
+/// existing reservation, allowing it to be counted exactly once across weeks.
+final class PlannedBatchUse {
+  PlannedBatchUse(this.batchId, this.batchRevision, this.allocationId) {
+    if (batchId.isEmpty || batchRevision < 1 || allocationId.isEmpty) {
+      throw ArgumentError('Invalid planned batch use');
+    }
+  }
+  final String batchId, allocationId;
+  final int batchRevision;
+}
+
 final class PlannedMeal {
-  PlannedMeal(this.slot, this.recipe, this.portions, {this.pinned = false}) {
+  PlannedMeal(this.slot, this.recipe, this.portions,
+      {this.pinned = false, this.batchUse}) {
     if (!portions.positive) throw ArgumentError('Portions must be positive');
   }
   final MealSlot slot;
   final RecipeVersion recipe;
   final Exact portions;
   final bool pinned;
+  final PlannedBatchUse? batchUse;
   Map<NutrientKey, NutrientSum> get nutrients => recipe.perServing(portions);
 }
 
@@ -248,19 +262,23 @@ final class PlannerContext {
       this.strictExclusions = const {},
       this.dietaryTags = const {},
       this.constraints = const [],
+      List<CookedBatch> batches = const [],
       List<Exact>? portions})
       : slots = List.unmodifiable(slots),
         recipes = List.unmodifiable(recipes),
+        batches = List.unmodifiable(batches),
         portions = List.unmodifiable(portions ?? [Exact.one]) {
     if (maxNodes < 1 ||
         slots.map((s) => s.id).toSet().length != slots.length ||
         this.portions.isEmpty ||
-        this.portions.any((p) => !p.positive)) {
+        this.portions.any((p) => !p.positive) ||
+        batches.map((b) => b.id).toSet().length != batches.length) {
       throw ArgumentError('Invalid planner context');
     }
   }
   final List<MealSlot> slots;
   final List<RecipeVersion> recipes;
+  final List<CookedBatch> batches;
   final List<Exact> portions;
   final int seed, maxNodes;
   final String catalogueVersion, policyVersion;
@@ -290,11 +308,38 @@ final class PlannerService {
   const PlannerService();
   List<String> validate(List<PlannedMeal> meals, PlannerContext c) {
     final errors = <String>[];
+    final extraByBatch = <String, Exact>{};
+    final usedAllocations = <String, Set<String>>{};
     if (meals.length != c.slots.length ||
         meals.map((m) => m.slot.id).toSet().length != c.slots.length) {
       errors.add('UNRESOLVED_SLOTS');
     }
     for (final meal in meals) {
+      final use = meal.batchUse;
+      if (use != null) {
+        final batch = c.batches.where((b) => b.id == use.batchId).firstOrNull;
+        if (batch == null || batch.revision != use.batchRevision) {
+          errors.add('BATCH_REVISION_MISMATCH');
+        } else if (batch.recipe != meal.recipe) {
+          errors.add('BATCH_RECIPE_MISMATCH');
+        } else {
+          final used = usedAllocations.putIfAbsent(batch.id, () => <String>{});
+          if (!used.add(use.allocationId)) errors.add('DUPLICATE_BATCH_USE');
+          final amount = batch.unit == FoodUnit.g
+              ? batch.finishedWeightG! * meal.portions / batch.recipe.servings
+              : meal.portions;
+          final reserved = batch.allocations
+              .where((a) => a.id == use.allocationId)
+              .firstOrNull;
+          if (reserved == null) {
+            extraByBatch[batch.id] =
+                (extraByBatch[batch.id] ?? Exact.zero) + amount;
+          } else if (reserved.status != 'planned' ||
+              reserved.amount != amount) {
+            errors.add('BATCH_ALLOCATION_MISMATCH');
+          }
+        }
+      }
       final definitions = c.recipes.where(
           (r) => r.id == meal.recipe.id && r.revision == meal.recipe.revision);
       if (definitions.isEmpty || definitions.first != meal.recipe) {
@@ -310,6 +355,13 @@ final class PlannerService {
       if (!c.slots
           .any((s) => s.id == meal.slot.id && s.date == meal.slot.date)) {
         errors.add('SLOT_MISMATCH');
+      }
+    }
+    for (final batch in c.batches) {
+      if ((batch.allocated + (extraByBatch[batch.id] ?? Exact.zero))
+              .compareTo(batch.available) >
+          0) {
+        errors.add('BATCH_STOCK_EXCEEDED');
       }
     }
     if (c.maximumRepeats != null) {
@@ -363,11 +415,27 @@ final class PlannerService {
       return PlannerResult(PlannerStatus.provenInfeasible, const [],
           const ['Empty eligible recipe set for mandatory slots']);
     }
-    for (final meal in existing.where((m) => m.pinned)) {
+    final pinned = existing.where((m) => m.pinned).toList();
+    if (pinned.map((m) => m.slot.id).toSet().length != pinned.length ||
+        pinned.any((m) =>
+            existing.where((other) => other.slot.id == m.slot.id).length !=
+            1) ||
+        pinned.any((m) =>
+            !c.slots.any((s) => s.id == m.slot.id && s.date == m.slot.date))) {
+      return PlannerResult(PlannerStatus.targetConflict, const [],
+          const ['Pinned meal slot is missing or duplicated']);
+    }
+    for (final meal in pinned) {
       if (!eligible.contains(meal.recipe)) {
         return PlannerResult(PlannerStatus.targetConflict, const [],
             const ['Pinned meal conflicts with recipe revision or exclusions']);
       }
+    }
+    final pinnedBatchErrors = validate(pinned, c)
+        .where((e) => e.startsWith('BATCH_') || e == 'DUPLICATE_BATCH_USE');
+    if (pinnedBatchErrors.isNotEmpty) {
+      return PlannerResult(PlannerStatus.targetConflict, const [],
+          List.unmodifiable(pinnedBatchErrors));
     }
     // Stable integer rotation: SDK/platform independent tie-breaking.
     if (eligible.isNotEmpty) {

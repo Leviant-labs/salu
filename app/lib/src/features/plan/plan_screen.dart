@@ -16,6 +16,7 @@ class _PlanState extends ConsumerState<PlanScreen> {
   List<RecipeVersion> recipes = [];
   List<PlannedMeal> meals = [];
   Map<String, bool> checked = {};
+  Map<String, Map<String, Object?>> manualGroceries = {};
   bool loaded = false;
   int revision = 0;
   String? status;
@@ -36,6 +37,7 @@ class _PlanState extends ConsumerState<PlanScreen> {
       }
       final plan = await store.read('plan', 'current');
       final groceries = await store.read('groceries', 'current');
+      final manual = await store.read('groceries', 'manual');
       final saved = <PlannedMeal>[];
       for (final v in plan?.data['meals'] as List? ?? []) {
         final j = Map<String, Object?>.from(v as Map);
@@ -56,6 +58,11 @@ class _PlanState extends ConsumerState<PlanScreen> {
             for (final e
                 in groceries?.data.entries ?? <MapEntry<String, Object?>>[])
               e.key: e.value == true
+          };
+          manualGroceries = {
+            for (final e
+                in manual?.data.entries ?? <MapEntry<String, Object?>>[])
+              e.key: Map<String, Object?>.from(e.value as Map)
           };
           loaded = true;
         });
@@ -168,6 +175,34 @@ class _PlanState extends ConsumerState<PlanScreen> {
                           c,
                           'Quantities use the ingredient preparation state recorded in each recipe. No raw/cooked conversion is invented.',
                           'As quantidades usam o estado de preparação registado na receita. Não são inventadas conversões entre cru e confecionado.')),
+                      OutlinedButton.icon(
+                          onPressed: () => _editManualGrocery(c),
+                          icon: const Icon(Icons.add),
+                          label: Text(
+                              tr(c, 'Add grocery item', 'Adicionar artigo'))),
+                      for (final item in manualGroceries.entries)
+                        ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Checkbox(
+                                value: item.value['checked'] == true,
+                                onChanged: (value) => _writeManualGrocery(
+                                    item.key,
+                                    {...item.value, 'checked': value == true})),
+                            title: Text(item.value['name'] as String),
+                            trailing: Wrap(children: [
+                              IconButton(
+                                  tooltip: tr(
+                                      c, 'Edit grocery item', 'Editar artigo'),
+                                  icon: const Icon(Icons.edit_outlined),
+                                  onPressed: () => _editManualGrocery(
+                                      c, item.key, item.value)),
+                              IconButton(
+                                  tooltip: tr(c, 'Remove grocery item',
+                                      'Remover artigo'),
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () =>
+                                      _writeManualGrocery(item.key, null))
+                            ])),
                       for (final line in groceriesFor(meals))
                         CheckboxListTile(
                             contentPadding: EdgeInsets.zero,
@@ -366,6 +401,49 @@ class _PlanState extends ConsumerState<PlanScreen> {
         setState(() => checked = {
               ...checked,
               '${line.foodId}|${line.preparation.name}': value
+            });
+      }
+    } catch (e) {
+      if (mounted) showFailure(context, e);
+    }
+  }
+
+  Future<void> _editManualGrocery(BuildContext c,
+      [String? id, Map<String, Object?>? item]) async {
+    final text = await askText(c,
+        title: tr(c, 'Grocery item', 'Artigo de compras'),
+        initial: item?['name'] as String? ?? '');
+    if (text == null || !c.mounted) return;
+    final name = text.trim();
+    if (name.isEmpty) {
+      showFailure(c,
+          ArgumentError(tr(c, 'Item is required', 'O artigo é obrigatório')));
+      return;
+    }
+    await _writeManualGrocery(id ?? ref.read(idGeneratorProvider).next(),
+        {'name': name, 'checked': item?['checked'] == true});
+  }
+
+  Future<void> _writeManualGrocery(
+      String id, Map<String, Object?>? item) async {
+    try {
+      final old = await store.read('groceries', 'manual');
+      final next = <String, Object?>{...?old?.data};
+      if (item == null) {
+        next.remove(id);
+      } else {
+        next[id] = item;
+      }
+      await store.put(
+          requestId: ref.read(idGeneratorProvider).next(),
+          collection: 'groceries',
+          id: 'manual',
+          expectedRevision: old?.revision ?? 0,
+          data: next);
+      if (mounted) {
+        setState(() => manualGroceries = {
+              for (final e in next.entries)
+                e.key: Map<String, Object?>.from(e.value as Map)
             });
       }
     } catch (e) {

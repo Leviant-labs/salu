@@ -215,6 +215,15 @@ void main() {
             ['MINOR', 'PREGNANCY', 'CLINICAL_NUTRITION', 'SYMPTOMS_REVIEW']));
     expect(result.findings.first.action, CoachingAction.seekAdvice);
     expect(result.adaptationStatus, 'disabled');
+    expect(result.findings.any((f) => f.action == CoachingAction.improveData),
+        isTrue);
+    expect(result.findings.any((f) => f.action == CoachingAction.hold), isFalse);
+  });
+  test('empty history does not support a hold-course finding', () {
+    final result = const CoachingService().checkIn(const SafetyProfile(), []);
+    expect(result.findings.single.action, CoachingAction.improveData);
+    expect(result.inputRevisions, isEmpty);
+    expect(result.adaptationStatus, 'disabled');
   });
   test('missing weekends never create a TEE estimate', () {
     final days = List.generate(

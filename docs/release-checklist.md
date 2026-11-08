@@ -43,3 +43,25 @@ section bounds were checked; see validation-2026-11-08.md. The prior head also p
 execution remains unverified; new code requires its own build results.
 
 Do not label this ledger or a debug artifact a completed release while gates are open.
+
+## Current development additions
+
+- Weekly check-ins now report their explicit window and day coverage; this is not
+  the complete set of coaching rules. Adaptation remains disabled.
+- Manual grocery entries can be added, edited, checked and removed. The full
+  planner, repair and grocery workflows remain partial.
+- Catalogue filtering and ranking now precede the search result limit. A
+  production catalogue, licence review and device performance evidence remain open.
+- Draft review and the health export outbox now have durable local stores and
+  recovery tests. Neither is connected to a provider or native health platform;
+  review UI, adapters, authorization and platform testing remain open.
+- Local deletion and restore refresh cached catalogue and meal views. Native
+  cache/media deletion and platform backup audits are still required.
+
+These additions are uncommitted development work and do not change the release
+status or replace the reviews and device gates above.
+
+Additional development work covers batch reservation validation, catalogue activation
+preview, recorded weight comparisons and atomic safety/target updates. Planner
+reservation persistence and UI, production datasets, broader coaching, and device
+validation remain open. Current host checks pass 142 tests; this is not release evidence.

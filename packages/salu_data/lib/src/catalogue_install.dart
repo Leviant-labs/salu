@@ -68,12 +68,65 @@ final class CataloguePack {
       });
 }
 
+/// A read-only description of the identifiers affected by an activation.
+///
+/// Replaced identifiers may have changed content; this is not a nutrient diff.
+/// The preview can become stale if another operation changes the catalogue.
+final class CatalogueActivationPreview {
+  CatalogueActivationPreview({
+    required this.installedVersion,
+    required List<String> addedIds,
+    required List<String> replacedIds,
+    required List<String> retiredIds,
+    required List<String> conflictingIds,
+  })  : addedIds = List.unmodifiable(addedIds),
+        replacedIds = List.unmodifiable(replacedIds),
+        retiredIds = List.unmodifiable(retiredIds),
+        conflictingIds = List.unmodifiable(conflictingIds);
+
+  final String? installedVersion;
+  final List<String> addedIds, replacedIds, retiredIds, conflictingIds;
+}
+
 final class CatalogueInstallService {
   CatalogueInstallService(this.db,
       {List<DatasetReview> approvedReviews = const []})
       : approvedReviews = List.unmodifiable(approvedReviews);
   final AppDatabase db;
   final List<DatasetReview> approvedReviews;
+
+  /// Describe the proposed replacement without modifying or approving it.
+  /// Licence review and staged validation still occur during activation.
+  Future<CatalogueActivationPreview> preview(CataloguePack pack) async {
+    final installed = await (db.select(db.catalogDatasets)
+          ..where((t) => t.id.equals(pack.dataset)))
+        .getSingleOrNull();
+    final current = await (db.select(db.catalogFoods)
+          ..where((t) => t.source.equals(pack.dataset)))
+        .get();
+    final existingIds = current.map((row) => row.id).toSet();
+    final incomingIds = pack.foods.map((food) => food.id).toSet();
+    final conflicts = <String>[];
+    final ids = incomingIds.toList();
+    // Chunk the lookup so large catalogues do not exceed SQLite's bind limit.
+    for (var offset = 0; offset < ids.length; offset += 500) {
+      final end = (offset + 500 < ids.length) ? offset + 500 : ids.length;
+      final rows = await (db.select(db.catalogFoods)
+            ..where((t) => t.id.isIn(ids.sublist(offset, end))))
+          .get();
+      conflicts.addAll(
+          rows.where((row) => row.source != pack.dataset).map((row) => row.id));
+    }
+    List<String> sorted(Iterable<String> values) => values.toList()..sort();
+    return CatalogueActivationPreview(
+        installedVersion: installed?.version,
+        addedIds: sorted(
+            incomingIds.difference(existingIds).difference(conflicts.toSet())),
+        replacedIds: sorted(incomingIds.intersection(existingIds)),
+        retiredIds: sorted(existingIds.difference(incomingIds)),
+        conflictingIds: sorted(conflicts));
+  }
+
   Future<void> activate(CataloguePack pack, {required bool confirmed}) async {
     if (!confirmed) throw StateError('CATALOGUE_CONFIRMATION_REQUIRED');
     final reviews = approvedReviews.where((r) =>

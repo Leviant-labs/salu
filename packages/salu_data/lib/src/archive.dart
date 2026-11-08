@@ -3,6 +3,7 @@ import 'package:salu_core/salu_core.dart';
 import 'document_validation.dart';
 import 'database/app_database.dart';
 import 'workspace_store.dart';
+import 'health_outbox_store.dart';
 import 'repositories/drift_food_repository.dart';
 
 /// Versioned full database archive. Secrets have no database representation.
@@ -74,6 +75,18 @@ final class ArchiveService {
               row['collection']! as String,
               Map<String, Object?>.from(
                   jsonDecode(row['payload']! as String) as Map));
+        }
+        if (table == 'user_documents' &&
+            row['collection'] == SqliteHealthOutboxStore.collection) {
+          final item = decodeHealthOutbox(
+              row['id']! as String, row['payload']! as String);
+          // A restored device has no verified connection or change-feed cursor.
+          // Never automatically replay an export from a backup.
+          row['payload'] = encodeHealthOutbox(HealthOutboxItem(
+              item.write,
+              item.state == HealthOutboxState.externallyDeleted
+                  ? HealthOutboxState.externallyDeleted
+                  : HealthOutboxState.restoreReviewRequired));
         }
         if (table == 'catalog_foods') {
           FoodUnit.values.byName(row['basis_unit']! as String);
@@ -154,7 +167,19 @@ final class ArchiveService {
   }
 
   Future<String> exportCsv() async {
-    String cell(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
+    String cell(Object? v) {
+      var value = (v ?? '').toString();
+      // CSV quoting alone does not prevent spreadsheet apps from evaluating
+      // a user-provided food name as a formula. Keep numeric database values
+      // numeric; prefix risky strings, including leading whitespace/control
+      // characters that spreadsheet importers may ignore.
+      if (v is String &&
+          (RegExp(r'^[\t\r\n]').hasMatch(value) ||
+              RegExp(r'^\s*[=+\-@]').hasMatch(value))) {
+        value = "'$value";
+      }
+      return '"${value.replaceAll('"', '""')}"';
+    }
     final rows = await db
         .customSelect(
             'SELECT e.id,e.diary_date,e.instant_utc_ms,e.offset_minutes,e.revision,i.name,i.grams,i.quantity_json,i.nutrients_json,i.source_json FROM log_entries e JOIN log_entry_items i ON e.id=i.entry_id ORDER BY e.diary_date,e.instant_utc_ms,i.position')

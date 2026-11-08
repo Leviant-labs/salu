@@ -42,8 +42,10 @@ final class DriftFoodRepository implements FoodRepository {
     await _db.customSelect('SELECT 1').getSingle();
     if (_db.ftsAvailable && tokens.isNotEmpty) {
       final match = tokens.map((t) => '"$t"*').join(' AND ');
+      // Ranking and preparation/region filtering happen below. Truncating here
+      // would discard valid or preferred foods before those rules are applied.
       final rows = await _db.customSelect(
-          'SELECT food_id,bm25(catalog_search,0,8,2) AS score FROM catalog_search WHERE catalog_search MATCH ? ORDER BY score,food_id LIMIT 200',
+          'SELECT food_id,bm25(catalog_search,0,8,2) AS score FROM catalog_search WHERE catalog_search MATCH ? ORDER BY score,food_id',
           variables: [Variable<String>(match)]).get();
       for (final r in rows) {
         relevance[r.read<String>('food_id')] = r.read<double>('score');

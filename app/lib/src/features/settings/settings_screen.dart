@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
+import '../catalogue/catalogue_preview_screen.dart';
 import '../../providers.dart';
 import '../../ui_support.dart';
 
@@ -73,8 +74,10 @@ class SettingsScreen extends ConsumerWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.table_view_outlined),
           title: Text(tr(c, 'Export diary CSV', 'Exportar diário CSV')),
-          subtitle: Text(tr(c, 'Unencrypted, contains personal records.',
-              'Sem cifragem, contém registos pessoais.')),
+          subtitle: Text(tr(
+              c,
+              'Unencrypted; contains personal records. Text that resembles a spreadsheet formula is prefixed for safety.',
+              'Sem cifragem; contém registos pessoais. O texto semelhante a uma fórmula de folha de cálculo recebe um prefixo de segurança.')),
           onTap: () => _export(c, ref, false)),
       ListTile(
           contentPadding: EdgeInsets.zero,
@@ -95,6 +98,17 @@ class SettingsScreen extends ConsumerWidget {
               'External backups, Health records and provider records require separate actions.',
               'As cópias externas, os registos de Saúde e os dados nos fornecedores exigem ações separadas.')),
           onTap: () => _delete(c, ref)),
+      ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.inventory_2_outlined),
+          title: Text(tr(c, 'Preview catalogue pack',
+              'Pré-visualizar pacote de catálogo')),
+          subtitle: Text(tr(c, 'Inspect a local pack without installing it.',
+              'Inspeciona um pacote local sem o instalar.')),
+          onTap: () => Navigator.push<void>(
+              c,
+              MaterialPageRoute(
+                  builder: (_) => const CataloguePreviewScreen()))),
       const Divider(),
       Text(tr(c, 'Optional connections', 'Ligações opcionais'),
           style: Theme.of(c).textTheme.titleLarge),
@@ -129,13 +143,10 @@ class SettingsScreen extends ConsumerWidget {
       final w = LocalWorkspace(ref.read(databaseProvider));
       final old = await w.read('target', 'current');
       if (!c.mounted) return;
-      final value = await askText(c,
-          title: tr(c, 'Declared daily energy (kcal)',
-              'Energia diária declarada (kcal)'),
-          hint: tr(c, 'Enter your own target, or cancel',
-              'Introduz a tua meta, ou cancela'));
-      if (value == null) return;
-      final amount = Exact.parse(value.replaceAll(',', '.'));
+      final previous = old == null ? null : DeclaredTarget.fromJson(old.data);
+      final input = await showDialog<_TargetInput>(
+          context: c, builder: (_) => _TargetDialog(previous: previous));
+      if (input == null) return;
       final profile = await w.read('profile', 'safety');
       final safety = const EligibilityService().evaluate(profile == null
           ? const SafetyProfile()
@@ -143,10 +154,15 @@ class SettingsScreen extends ConsumerWidget {
       final target = DeclaredTarget(
           id: 'current',
           revision: (old?.revision ?? 0) + 1,
-          origin: TargetOrigin.userDeclared,
+          origin: input.origin,
           effectiveDate: ref.read(todayDiaryDateProvider).toIso(),
-          policyVersion: 'user-declared-v1',
-          energyKcal: amount,
+          policyVersion: input.origin == TargetOrigin.clinicianProvided
+              ? 'clinician-provided-v1'
+              : 'user-declared-v1',
+          energyKcal: input.energy,
+          proteinG: input.protein,
+          fatG: input.fat,
+          carbohydrateG: input.carbohydrate,
           active: safety.declaredTargetPlanning);
       if (!c.mounted) return;
       if (!await confirmAction(
@@ -158,12 +174,18 @@ class SettingsScreen extends ConsumerWidget {
               'Este é o teu plano declarado, não uma necessidade determinada pela aplicação. ${target.active ? '' : 'Permanecerá inativo para recomendações de acordo com as declarações de segurança atuais.'}'))) {
         return;
       }
-      await w.put(
-          requestId: ref.read(idGeneratorProvider).next(),
-          collection: 'target',
-          id: 'current',
-          expectedRevision: old?.revision ?? 0,
-          data: target.toJson());
+      await w.db.transaction(() async {
+        final currentProfile = await w.read('profile', 'safety');
+        if ((currentProfile?.revision ?? 0) != (profile?.revision ?? 0)) {
+          throw StateError('SAFETY_DECLARATIONS_CHANGED');
+        }
+        await w.put(
+            requestId: ref.read(idGeneratorProvider).next(),
+            collection: 'target',
+            id: 'current',
+            expectedRevision: old?.revision ?? 0,
+            data: target.toJson());
+      });
     } catch (e) {
       if (c.mounted) showFailure(c, e);
     }
@@ -231,9 +253,8 @@ class SettingsScreen extends ConsumerWidget {
       }
       await ArchiveService(ref.read(databaseProvider))
           .restoreJson(content, confirmed: true);
+      _invalidateRecords(ref);
       await ref.read(settingsProvider.notifier).reload();
-      ref.invalidate(todayEntriesProvider);
-      ref.invalidate(foodSearchProvider);
     } catch (e) {
       if (c.mounted) showFailure(c, e);
     }
@@ -252,14 +273,164 @@ class SettingsScreen extends ConsumerWidget {
     try {
       await ArchiveService(ref.read(databaseProvider))
           .deleteLocalData(confirmed: true);
-      await const FlutterSecureStorage().deleteAll();
-      ref.invalidate(todayEntriesProvider);
-      ref.invalidate(foodSearchProvider);
       ref.read(settingsProvider.notifier).reset();
+      _invalidateRecords(ref);
+      await const FlutterSecureStorage().deleteAll();
     } catch (e) {
       if (c.mounted) showFailure(c, e);
     }
   }
+
+  void _invalidateRecords(WidgetRef ref) {
+    ref.invalidate(todayEntriesProvider);
+    ref.invalidate(foodSearchProvider);
+    ref.invalidate(favoriteFoodsProvider);
+    ref.invalidate(recentFoodsProvider);
+    ref.invalidate(savedMealsProvider);
+  }
+}
+
+class _TargetInput {
+  const _TargetInput(
+      this.energy, this.protein, this.fat, this.carbohydrate, this.origin);
+  final Exact energy;
+  final Exact? protein, fat, carbohydrate;
+  final TargetOrigin origin;
+}
+
+class _TargetDialog extends StatefulWidget {
+  const _TargetDialog({this.previous});
+  final DeclaredTarget? previous;
+
+  @override
+  State<_TargetDialog> createState() => _TargetDialogState();
+}
+
+class _TargetDialogState extends State<_TargetDialog> {
+  late final List<TextEditingController> fields;
+  late final List<String> initial;
+  late TargetOrigin origin;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    final target = widget.previous;
+    initial = [
+      target?.energyKcal,
+      target?.proteinG,
+      target?.fatG,
+      target?.carbohydrateG
+    ].map((v) => v?.toString() ?? '').toList();
+    fields = initial.map((s) => TextEditingController(text: s)).toList();
+    origin = target?.origin == TargetOrigin.clinicianProvided
+        ? TargetOrigin.clinicianProvided
+        : TargetOrigin.userDeclared;
+  }
+
+  @override
+  void dispose() {
+    for (final field in fields) {
+      field.dispose();
+    }
+    super.dispose();
+  }
+
+  void submit() {
+    try {
+      final previous = widget.previous;
+      final old = [
+        previous?.energyKcal,
+        previous?.proteinG,
+        previous?.fatG,
+        previous?.carbohydrateG
+      ];
+      Exact? parse(int i) {
+        final text = fields[i].text.trim();
+        if (text.isEmpty) return null;
+        if (text == initial[i] && old[i] != null) return old[i];
+        return Exact.parse(text.replaceAll(',', '.'));
+      }
+
+      final energy = parse(0);
+      if (energy == null || !energy.positive) throw const FormatException();
+      final protein = parse(1), fat = parse(2), carbohydrate = parse(3);
+      if ([protein, fat, carbohydrate]
+          .any((v) => v != null && v.compareTo(Exact.zero) < 0)) {
+        throw const FormatException();
+      }
+      final total = (protein ?? Exact.zero) * Exact.parse('4') +
+          (fat ?? Exact.zero) * Exact.parse('9') +
+          (carbohydrate ?? Exact.zero) * Exact.parse('4');
+      if (total.compareTo(energy) > 0) {
+        setState(() => error = tr(
+            context,
+            'Macro energy exceeds the declared energy. Review the amounts.',
+            'A energia dos macronutrientes excede a energia declarada. Revê as quantidades.'));
+        return;
+      }
+      Navigator.pop(
+          context, _TargetInput(energy, protein, fat, carbohydrate, origin));
+    } catch (_) {
+      setState(() => error = tr(
+          context,
+          'Enter a positive energy value and non-negative macro values.',
+          'Introduz uma energia positiva e quantidades de macronutrientes não negativas.'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+          title: Text(tr(context, 'Declared target', 'Meta declarada')),
+          content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(tr(
+                context,
+                'Enter your own target or one provided by a clinician. Optional macro values may be left blank.',
+                'Introduz a tua meta ou uma fornecida por um profissional de saúde. Os macronutrientes são opcionais.')),
+            for (final entry in [
+              (
+                0,
+                tr(context, 'Declared daily energy (kcal)',
+                    'Energia diária declarada (kcal)')
+              ),
+              (1, tr(context, 'Protein (g)', 'Proteína (g)')),
+              (2, tr(context, 'Fat (g)', 'Gordura (g)')),
+              (3, tr(context, 'Carbohydrate (g)', 'Hidratos de carbono (g)'))
+            ])
+              TextField(
+                  controller: fields[entry.$1],
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: entry.$2)),
+            DropdownButtonFormField<TargetOrigin>(
+                initialValue: origin,
+                decoration: InputDecoration(
+                    labelText: tr(context, 'Target source', 'Origem da meta')),
+                items: [
+                  DropdownMenuItem(
+                      value: TargetOrigin.userDeclared,
+                      child: Text(tr(context, 'My target', 'A minha meta'))),
+                  DropdownMenuItem(
+                      value: TargetOrigin.clinicianProvided,
+                      child: Text(tr(context, 'Clinician-provided',
+                          'Fornecida por profissional de saúde')))
+                ],
+                onChanged: (v) {
+                  if (v != null) setState(() => origin = v);
+                }),
+            if (error != null)
+              Text(error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ])),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(tr(context, 'Cancel', 'Cancelar'))),
+            FilledButton(
+                onPressed: submit,
+                child: Text(tr(context, 'Continue', 'Continuar')))
+          ]);
 }
 
 class _SafetyScreen extends ConsumerStatefulWidget {
@@ -271,6 +442,7 @@ class _SafetyScreen extends ConsumerStatefulWidget {
 class _SafetyState extends ConsumerState<_SafetyScreen> {
   Map<String, Object?> data = {};
   bool loaded = false;
+  int loadedRevision = 0;
   @override
   void initState() {
     super.initState();
@@ -283,6 +455,7 @@ class _SafetyState extends ConsumerState<_SafetyScreen> {
     if (mounted) {
       setState(() {
         data = {...?document?.data};
+        loadedRevision = document?.revision ?? 0;
         loaded = true;
       });
     }
@@ -347,34 +520,47 @@ class _SafetyState extends ConsumerState<_SafetyScreen> {
                     try {
                       final profile = SafetyProfile.fromJson(data);
                       final w = LocalWorkspace(ref.read(databaseProvider));
-                      final old = await w.read('profile', 'safety');
-                      await w.put(
-                          requestId: ref.read(idGeneratorProvider).next(),
-                          collection: 'profile',
-                          id: 'safety',
-                          expectedRevision: old?.revision ?? 0,
-                          data: profile.toJson());
-                      if (!const EligibilityService()
-                          .evaluate(profile)
-                          .declaredTargetPlanning) {
-                        final target = await w.read('target', 'current');
-                        if (target != null && target.data['active'] == true) {
+                      await w.db.transaction(() async {
+                        final old = await w.read('profile', 'safety');
+                        if ((old?.revision ?? 0) != loadedRevision) {
+                          throw StateError('SAFETY_DECLARATIONS_CHANGED');
+                        }
+                        await w.put(
+                            requestId: ref.read(idGeneratorProvider).next(),
+                            collection: 'profile',
+                            id: 'safety',
+                            expectedRevision: old?.revision ?? 0,
+                            data: profile.toJson());
+                        if (!const EligibilityService()
+                            .evaluate(profile)
+                            .declaredTargetPlanning) {
+                          final target = await w.read('target', 'current');
+                          if (target != null && target.data['active'] == true) {
+                            await w.put(
+                                requestId: ref.read(idGeneratorProvider).next(),
+                                collection: 'target',
+                                id: 'current',
+                                expectedRevision: target.revision,
+                                data: {
+                                  ...target.data,
+                                  'active': false,
+                                  'revision': target.revision + 1
+                                });
+                          }
+                        }
+                        if (profile.eatingConcern == true) {
+                          final preferences =
+                              await w.read('preferences', 'app');
                           await w.put(
                               requestId: ref.read(idGeneratorProvider).next(),
-                              collection: 'target',
-                              id: 'current',
-                              expectedRevision: target.revision,
-                              data: {
-                                ...target.data,
-                                'active': false,
-                                'revision': target.revision + 1
-                              });
+                              collection: 'preferences',
+                              id: 'app',
+                              expectedRevision: preferences?.revision ?? 0,
+                              data: {...?preferences?.data, 'support': true});
                         }
-                      }
+                      });
                       if (profile.eatingConcern == true) {
-                        await ref
-                            .read(settingsProvider.notifier)
-                            .change('support', true);
+                        await ref.read(settingsProvider.notifier).reload();
                       }
                       if (c.mounted) Navigator.pop(c);
                     } catch (e) {
