@@ -38,3 +38,14 @@ staging databases are intentionally separate executors. No global warning suppre
 was added to conceal an actual shared-executor configuration error.
 
 The full remaining feature/review/device checklist is in release-checklist.md.
+
+## CI follow-up
+
+The first remote Flutter app job passed. The data job exposed a Dart 3.13
+experimental-member warning for Drift's pinned TableMigration API; its single
+call site is now explicitly acknowledged, preserving the tested migration code.
+Android CI lacked sdkmanager on PATH; Android SDK setup is now explicit before
+installing plugin platforms. These follow-up changes affect CI setup and a
+source annotation only; the saved APK is the original development build from
+commit 0922de5. The workspace became unavailable after source and APK saving,
+so follow-up checks run on GitHub Actions rather than being reported as local runs.

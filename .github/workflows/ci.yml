@@ -71,6 +71,11 @@ jobs:
         run: |
           dart pub get --enforce-lockfile
           dart run build_runner build
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: false
       - name: Required Android plugin platforms
         run: sdkmanager "platforms;android-34" "platforms;android-35" "platforms;android-36" "build-tools;36.0.0"
       - name: Build debug APK

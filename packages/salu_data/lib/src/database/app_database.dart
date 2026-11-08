@@ -39,6 +39,9 @@ class AppDatabase extends _$AppDatabase {
           await transaction(() async {
             await m.addColumn(catalogFoods, catalogFoods.basisUnit);
             await m.addColumn(catalogFoods, catalogFoods.basisValue);
+            // Drift's pinned TableMigration API is experimental; the real v1
+            // SQLite fixture exercises this exact rewrite and value preservation.
+            // ignore: experimental_member_use
             await m.alterTable(TableMigration(logEntryItems, newColumns: [
               logEntryItems.quantityJson,
               logEntryItems.sourceJson
