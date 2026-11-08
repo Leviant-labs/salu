@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  packages:
+    name: core + data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install sqlite3
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Enforce module boundaries
+        run: bash tool/check_boundaries.sh
+
+      - name: salu_core — analyze and test
+        working-directory: packages/salu_core
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
+      - name: salu_data — generated code is current
+        working-directory: packages/salu_data
+        run: |
+          dart pub get
+          dart run build_runner build
+          if ! git diff --quiet -- lib/src/database/app_database.g.dart; then
+            echo "::error::app_database.g.dart is stale — run build_runner and commit the result"
+            git diff --stat
+            exit 1
+          fi
+
+      - name: salu_data — analyze and test
+        working-directory: packages/salu_data
+        run: |
+          dart analyze
+          dart test
+
+  app:
+    name: flutter app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Analyze and test
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
