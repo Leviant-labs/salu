@@ -16,3 +16,11 @@ export 'src/domain/quantity.dart';
 export 'src/domain/time.dart';
 export 'src/platform/health.dart';
 export 'src/providers/inference.dart';
+
+export 'src/domain/nutrition_contract.dart';
+export 'src/domain/policy.dart';
+export 'src/domain/coaching.dart';
+export 'src/domain/planning.dart';
+export 'src/application/review.dart';
+export 'src/application/revise_entry.dart';
+export 'src/application/log_recipe.dart';

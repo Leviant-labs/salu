@@ -29,4 +29,11 @@ check "salu_core must not import an HTTP client"    "package:(http|dio|web_socke
 check "salu_core must not use dart:io"              "dart:io"
 check "salu_core must not import salu_data or the app" "package:(salu_data|salu/)"
 
+if grep -qE '^dependencies:' packages/salu_core/pubspec.yaml; then
+  echo 'FAIL: salu_core must have no runtime package dependencies'
+  status=1
+else
+  echo 'ok: salu_core has no runtime package dependencies'
+fi
+check "salu_core uses only SDK and relative imports" "^(import|export) ['\"]package:"
 exit "$status"

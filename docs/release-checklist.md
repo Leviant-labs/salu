@@ -1,0 +1,45 @@
+# Specified release acceptance ledger
+
+Source revision: upstream `804ac3b91186879d16e8afeec977cae0d8567418`.
+The source was materialized through the authenticated GitHub connector after HTTPS
+Git authentication failed. The exact unsigned upstream commit and source tree were reconstructed and hash-verified,
+establishing a shallow Git checkout. Publication preserves this upstream parent.
+
+The supplied contracts match the checked-out repository versions byte for byte. Product v2 and nutrition
+v2 disagree on per-volume records: nutrition §4 is the explicit dimensional
+contract; same-unit scaling must work without density. Product §4's canonical
+grams apply only when a supported mass conversion exists. Legacy measured JSON
+stays measured, never retroactively relabelled as label-reported. New labels use
+reported/reported_zero. Trace without a supplied numeric limit cannot be exact 0.
+
+Status vocabulary: pending, partial, implemented-unverified, automated-pass, device-pass,
+review-blocked. Tests alone do not satisfy clinical or distribution approval.
+
+| Gate | Required evidence | Status |
+|---|---|---|
+| Foundation | Dart MCP handshake and tool calls verified; core/data/app analysis + tests + boundary checks run; native builds recorded separately | automated-pass (host scope) |
+| Arithmetic | native basis, exact decimals, unknown/trace/reported-zero, partial totals tested; production definition adapters not complete | partial; automated evidence |
+| History | snapshot source/quantity, correction revisions, stable diary date and real v1 SQLite migration fixture tested | automated-pass (covered flows) |
+| Recording | custom foods, quantity selection, diary edits and completeness UI implemented; favourites/barcodes/saved meals remain | partial |
+| Catalogue | staged atomic install, FTS, licensed baseline, barcode/manual recovery | pending |
+| Targets | declared ownership and references, safety routes, no exercise add-back | pending |
+| Automatic targets | reviewed versioned eligibility and target policies | review-blocked |
+| Adaptation | specified algorithm, simulation + held-out + prospective evaluation | review-blocked |
+| Planning | core reproducibility, strict unknown allergens, pins, portions, repair tested; full constraints/schedule UI and soft objectives remain | partial |
+| Recipes/batches | immutable versions, yield, bounded stock + transactional intake and groceries implemented/tested; planned stock and full grocery edits remain | partial |
+| Coaching/rewards | offline findings, independent safety, humane idempotent rewards | pending |
+| Drafts | review, stale response rejection, cancellation, retry, no direct provider writes | pending |
+| Providers | authorization/terms/distribution review, capability and consent tests | review-blocked |
+| Health | native permissions, outbox/reconciliation, duplicates, external deletions | pending |
+| Data controls | archive, staged atomic restore, authenticated encryption, CSV and DB deletion tested; native picker/cache and media audit remain | partial |
+| App | onboarding, navigation, EN/pt-PT, support mode; large-text widget checks; native screen-reader flows remain | partial |
+| Devices | iOS + Android end-to-end, large text, screen readers, both languages | pending |
+| Performance | host-only 10k synthetic search/planner p50/p95 recorded; named-device, cold/warm startup/log/RAM/DB measurements remain | pending (device gates) |
+| Datasets/media | PT coverage, label/photo correction benchmarks, content rights | review-blocked |
+| Privacy | actual transfers, secure credentials, threat model, retention review | review-blocked |
+
+Android debug compilation passed. APK signature, ZIP integrity and native ELF
+section bounds were checked; see validation-2026-11-08.md. iOS and named-device
+execution remain unverified.
+
+Do not label this ledger or a debug artifact a completed release while gates are open.

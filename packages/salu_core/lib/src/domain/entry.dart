@@ -3,6 +3,7 @@
 library;
 
 import 'nutrients.dart';
+import 'nutrition_contract.dart';
 import 'time.dart';
 
 /// Which input produced an entry. Provenance is user-visible and exportable.
@@ -40,13 +41,17 @@ final class LoggedItem {
     required this.grams,
     required this.nutrients,
     this.foodId,
-  }) : assert(grams >= 0, 'grams must be >= 0');
+    this.quantity,
+    this.sourceSnapshot,
+  }) : assert(grams == null || grams >= 0, 'grams must be >= 0');
 
   /// Display name captured at log time.
   final String name;
 
   /// Eaten mass in grams.
-  final double grams;
+  final double? grams;
+  final FoodAmount? quantity;
+  final Map<String, Object?>? sourceSnapshot;
 
   /// Nutrients for [grams], as recorded.
   final NutrientProfile nutrients;
@@ -105,7 +110,9 @@ final class LoggedEntry {
   final String? note;
 
   /// Total eaten mass in grams.
-  double get grams => items.fold(0, (sum, item) => sum + item.grams);
+  double? get grams => items.any((i) => i.grams == null)
+      ? null
+      : items.fold<double>(0, (sum, item) => sum + item.grams!);
 
   /// Per-nutrient totals with their completeness flags.
   Map<NutrientKey, NutrientSum> get nutrientSums => NutrientProfile.combine(

@@ -1,26 +1,16 @@
 #!/usr/bin/env bash
-# Generates the Android and iOS host projects that `flutter create` owns.
-#
-# The Dart code, package layout and tests in this repo are hand-written and
-# version-controlled. The platform folders contain generated Gradle/Xcode
-# boilerplate plus large binary assets (the Gradle wrapper jar), so they are
-# created once on a machine with the Flutter SDK rather than committed blindly.
-#
-# Run from `app/`:   bash tool/bootstrap_platforms.sh
+# Existing platform code is authoritative. Never regenerate app source or hosts
+# over user permissions, signing, or bootstrap changes.
 set -euo pipefail
-
 cd "$(dirname "$0")/.."
-
-if ! command -v flutter >/dev/null 2>&1; then
-  echo "flutter not found on PATH" >&2
-  exit 1
+command -v flutter >/dev/null || { echo 'flutter not found on PATH' >&2; exit 1; }
+if [[ -d android && -d ios ]]; then
+  echo 'Android and iOS hosts already exist; preserved.'
+  exit 0
 fi
-
-flutter create \
-  --project-name salu \
-  --org pt.salu \
-  --platforms android,ios \
-  --no-pub \
-  .
-
-echo "Platform folders generated. Run: flutter pub get && flutter run"
+salu_platform_tmp=$(mktemp -d)
+trap 'rm -rf "$salu_platform_tmp"' EXIT
+flutter create --empty --project-name salu --org pt.salu --platforms android,ios --no-pub "$salu_platform_tmp/host"
+for platform in android ios; do
+  if [[ ! -d "$platform" ]]; then cp -R "$salu_platform_tmp/host/$platform" "$platform"; fi
+done

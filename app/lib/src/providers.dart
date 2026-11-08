@@ -42,10 +42,15 @@ final logFoodHandlerProvider = Provider<LogFoodHandler>(
 int currentOffsetMinutes() => DateTime.now().timeZoneOffset.inMinutes;
 
 /// The diary date the app opens on.
+final selectedDiaryDateProvider = StateProvider<DiaryDate?>((ref) => null);
+
 final todayDiaryDateProvider = Provider<DiaryDate>(
-  (ref) => DiaryDate.assign(
-    EventStamp(instant: DateTime.now(), offsetMinutes: currentOffsetMinutes()),
-  ),
+  (ref) =>
+      ref.watch(selectedDiaryDateProvider) ??
+      DiaryDate.assign(
+        EventStamp(
+            instant: DateTime.now(), offsetMinutes: currentOffsetMinutes()),
+      ),
 );
 
 /// Entries for the opened diary date.

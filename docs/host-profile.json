@@ -1,0 +1,17 @@
+{
+  "scope": "Linux host only; no device performance claim",
+  "runtime": "3.9.2 (stable) (Wed Aug 27 03:49:40 2025 -0700) on \"linux_x64\"",
+  "os": "linux",
+  "catalogueRows": 10000,
+  "catalogueInstallMs": 1208,
+  "searchWarmMicroseconds": {
+    "p50": 872,
+    "p95": 1811
+  },
+  "plannerWarmMicroseconds": {
+    "p50": 367,
+    "p95": 864
+  },
+  "conditions": "in-memory SQLite, synthetic names, unknown nutrients, single dinner recipe, 100 iterations",
+  "deviceGates": "cold start, disk DB footprint, peak RAM, camera/image tokens, correction effort and named Android/iOS devices remain pending"
+}

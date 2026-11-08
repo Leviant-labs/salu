@@ -6,6 +6,7 @@
 library;
 
 import 'dart:collection';
+import 'nutrition_contract.dart';
 
 /// A nutrient the app can store, total, and display.
 ///
@@ -13,6 +14,13 @@ import 'dart:collection';
 /// export archives. Never rename it; add a new member instead.
 enum NutrientKey {
   energyKcal('energy_kcal', 'kcal'),
+  energyKj('energy_kj', 'kJ'),
+  freeSugarsG('free_sugars_g', 'g'),
+  ironMg('iron_mg', 'mg'),
+  iodineUg('iodine_ug', 'µg'),
+  calciumMg('calcium_mg', 'mg'),
+  vitaminCMg('vitamin_c_mg', 'mg'),
+  vitaminDUg('vitamin_d_ug', 'µg'),
   proteinG('protein_g', 'g'),
   fatG('fat_g', 'g'),
   saturatedFatG('saturated_fat_g', 'g'),
@@ -53,6 +61,8 @@ sealed class NutrientValue {
 
   /// Whether this value carries a usable number (including an explicit zero).
   bool get isKnown => numericValue != null;
+  Exact? get exactValue =>
+      numericValue == null ? null : Exact.parse(numericValue!.toString());
 
   /// Stable JSON form. Round-trips through [NutrientValue.fromJson].
   Map<String, Object?> toJson();
@@ -63,15 +73,23 @@ sealed class NutrientValue {
     if (json is! Map) return unknown;
     final state = json['state'];
     final value = json['value'];
+    final exact = json['exact'] == null
+        ? null
+        : Exact.fromJson(Map<String, Object?>.from(json['exact'] as Map));
     switch (state) {
+      case 'reported':
+      case 'reported_zero':
+        return value is num
+            ? NutrientReported.exact(exact ?? Exact.parse(value.toString()))
+            : unknown;
       case 'measured':
         return value is num
-            ? NutrientMeasured(value.toDouble())
+            ? NutrientMeasured.exact(exact ?? Exact.parse(value.toString()))
             : NutrientUnknown();
       case 'estimated':
         return value is num
-            ? NutrientEstimated(
-                value.toDouble(),
+            ? NutrientEstimated.exact(
+                exact ?? Exact.parse(value.toString()),
                 basis: json['basis'] as String? ?? 'unspecified',
               )
             : NutrientUnknown();
@@ -81,6 +99,13 @@ sealed class NutrientValue {
         return unknown;
     }
   }
+}
+
+Exact _checkedNutrient(double value) {
+  if (!value.isFinite || value < 0) {
+    throw ArgumentError('Nutrient must be finite and nonnegative');
+  }
+  return Exact.parse(value.toString());
 }
 
 /// No measurement or estimate exists.
@@ -107,39 +132,72 @@ final class NutrientUnknown extends NutrientValue {
 final class NutrientMeasured extends NutrientValue {
   /// Creates a measured value. Negative or non-finite input is a programming
   /// error: it cannot describe a nutrient amount.
-  NutrientMeasured(this.value) {
-    if (!value.isFinite || value < 0) {
-      throw ArgumentError.value(value, 'value', 'must be finite and >= 0');
+  NutrientMeasured(double value) : exact = _checkedNutrient(value);
+  NutrientMeasured.exact(this.exact) {
+    if (exact.compareTo(Exact.zero) < 0) {
+      throw ArgumentError('Negative nutrient');
     }
   }
+  final Exact exact;
+  @override
+  Exact get exactValue => exact;
 
   /// Measured amount in [NutrientKey.unit].
-  final double value;
+  double get value => exact.toDouble();
 
   @override
   double? get numericValue => value;
 
   @override
-  Map<String, Object?> toJson() => {'state': 'measured', 'value': value};
+  Map<String, Object?> toJson() =>
+      {'state': 'measured', 'value': value, 'exact': exact.toJson()};
 
   @override
   bool operator ==(Object other) =>
-      other is NutrientMeasured && other.value == value;
+      other is NutrientMeasured && other.exact == exact;
 
   @override
-  int get hashCode => value.hashCode;
+  int get hashCode => exact.hashCode;
 
   @override
   String toString() => 'NutrientMeasured($value)';
 }
 
-/// Below the reporting threshold: contributes zero to totals but is not the
+/// Label/user-reported amount. A printed zero is not analytical absence.
+final class NutrientReported extends NutrientValue {
+  NutrientReported(double value) : exact = _checkedNutrient(value);
+  NutrientReported.exact(this.exact) {
+    if (exact.compareTo(Exact.zero) < 0) {
+      throw ArgumentError('Negative nutrient');
+    }
+  }
+  final Exact exact;
+  double get value => exact.toDouble();
+  @override
+  Exact get exactValue => exact;
+
+  @override
+  double get numericValue => value;
+  @override
+  Map<String, Object?> toJson() => {
+        'state': value == 0 ? 'reported_zero' : 'reported',
+        'value': value,
+        'exact': exact.toJson()
+      };
+  @override
+  bool operator ==(Object other) =>
+      other is NutrientReported && other.exact == exact;
+  @override
+  int get hashCode => Object.hash('reported', exact);
+}
+
+/// Below the reporting threshold: no exact numeric contribution is known; not the
 /// same as "measured zero", and is surfaced in the UI as such.
 final class NutrientTrace extends NutrientValue {
   const NutrientTrace();
 
   @override
-  double get numericValue => 0;
+  double? get numericValue => null;
 
   @override
   Map<String, Object?> toJson() => const {'state': 'trace'};
@@ -158,14 +216,19 @@ final class NutrientTrace extends NutrientValue {
 /// and audit trail can distinguish it from a measured value.
 final class NutrientEstimated extends NutrientValue {
   /// Creates an estimated value; [basis] names where the estimate came from.
-  NutrientEstimated(this.value, {required this.basis}) {
-    if (!value.isFinite || value < 0) {
-      throw ArgumentError.value(value, 'value', 'must be finite and >= 0');
+  NutrientEstimated(double value, {required this.basis})
+      : exact = _checkedNutrient(value);
+  NutrientEstimated.exact(this.exact, {required this.basis}) {
+    if (exact.compareTo(Exact.zero) < 0) {
+      throw ArgumentError('Negative nutrient');
     }
   }
+  final Exact exact;
+  @override
+  Exact get exactValue => exact;
 
   /// Estimated amount in [NutrientKey.unit].
-  final double value;
+  double get value => exact.toDouble();
 
   /// Short provenance label, e.g. `photo-inference` or `recipe-yield`.
   final String basis;
@@ -177,17 +240,18 @@ final class NutrientEstimated extends NutrientValue {
   Map<String, Object?> toJson() => {
         'state': 'estimated',
         'value': value,
+        'exact': exact.toJson(),
         'basis': basis,
       };
 
   @override
   bool operator ==(Object other) =>
       other is NutrientEstimated &&
-      other.value == value &&
+      other.exact == exact &&
       other.basis == basis;
 
   @override
-  int get hashCode => Object.hash(value, basis);
+  int get hashCode => Object.hash(exact, basis);
 
   @override
   String toString() => 'NutrientEstimated($value, $basis)';
@@ -205,7 +269,14 @@ final class NutrientSum {
     required this.isComplete,
     required this.includesTrace,
     required this.includesEstimate,
+    this.knownEntries = 0,
+    this.exact,
   });
+
+  final Exact? exact;
+  Exact get exactValue => exact ?? Exact.parse(value.toString());
+  final int knownEntries;
+  double? get recordedValue => knownEntries == 0 ? null : value;
 
   /// Sum of the known contributions.
   final double value;
@@ -223,7 +294,9 @@ final class NutrientSum {
   NutrientSum adding(NutrientValue next) {
     final numeric = next.numericValue;
     return NutrientSum(
-      value: value + (numeric ?? 0),
+      value: (exactValue + (next.exactValue ?? Exact.zero)).toDouble(),
+      exact: exactValue + (next.exactValue ?? Exact.zero),
+      knownEntries: knownEntries + (numeric == null ? 0 : 1),
       isComplete: isComplete && next.isKnown,
       includesTrace: includesTrace || next is NutrientTrace,
       includesEstimate: includesEstimate || next is NutrientEstimated,
@@ -249,14 +322,15 @@ final class NutrientSum {
   @override
   bool operator ==(Object other) =>
       other is NutrientSum &&
-      other.value == value &&
+      other.exactValue == exactValue &&
+      other.knownEntries == knownEntries &&
       other.isComplete == isComplete &&
       other.includesTrace == includesTrace &&
       other.includesEstimate == includesEstimate;
 
   @override
-  int get hashCode =>
-      Object.hash(value, isComplete, includesTrace, includesEstimate);
+  int get hashCode => Object.hash(
+      exactValue, knownEntries, isComplete, includesTrace, includesEstimate);
 
   @override
   String toString() =>
@@ -312,10 +386,13 @@ final class NutrientProfile {
   /// Unknowns stay unknown and traces stay traces: scaling cannot manufacture
   /// knowledge about a nutrient that was never measured.
   NutrientProfile scaled(double factor) {
-    if (!factor.isFinite || factor < 0) {
-      throw ArgumentError.value(factor, 'factor', 'must be finite and >= 0');
-    }
-    if (factor == 1) return this;
+    if (!factor.isFinite || factor < 0) throw ArgumentError('Invalid factor');
+    return scaledExact(Exact.parse(factor.toString()));
+  }
+
+  NutrientProfile scaledExact(Exact factor) {
+    if (factor.compareTo(Exact.zero) < 0) throw ArgumentError('Invalid factor');
+    if (factor == Exact.one) return this;
     final scaled = <NutrientKey, NutrientValue>{};
     for (final entry in _values.entries) {
       final value = entry.value;
@@ -323,11 +400,13 @@ final class NutrientProfile {
         case NutrientUnknown():
         case NutrientTrace():
           scaled[entry.key] = value;
+        case NutrientReported():
+          scaled[entry.key] = NutrientReported.exact(value.exact * factor);
         case NutrientMeasured():
-          scaled[entry.key] = NutrientMeasured(value.value * factor);
+          scaled[entry.key] = NutrientMeasured.exact(value.exact * factor);
         case NutrientEstimated():
-          scaled[entry.key] = NutrientEstimated(
-            value.value * factor,
+          scaled[entry.key] = NutrientEstimated.exact(
+            value.exact * factor,
             basis: value.basis,
           );
       }
@@ -343,13 +422,13 @@ final class NutrientProfile {
   static Map<NutrientKey, NutrientSum> combine(
     Iterable<NutrientProfile> profiles,
   ) {
-    final result = <NutrientKey, NutrientSum>{};
-    for (final profile in profiles) {
-      for (final key in profile.values.keys) {
-        result[key] = (result[key] ?? NutrientSum.zero).adding(profile[key]);
-      }
-    }
-    return result;
+    final list = profiles.toList(growable: false);
+    final keys = list.expand((p) => p.values.keys).toSet();
+    return {
+      for (final key in keys)
+        key: list.fold<NutrientSum>(
+            NutrientSum.zero, (sum, p) => sum.adding(p[key])),
+    };
   }
 
   /// JSON form keyed by [NutrientKey.wire], suitable for a database column.

@@ -44,6 +44,23 @@ final class DriftFoodRepository implements FoodRepository {
   /// in one transaction so an interrupted update cannot leave a half-installed
   /// catalogue.
   Future<void> replaceCatalogueBatch(List<Food> foods) async {
+    for (final food in foods) {
+      if (food.id.isEmpty ||
+          food.name.trim().isEmpty ||
+          food.source.dataset.isEmpty ||
+          food.source.datasetId.isEmpty ||
+          !Exact.parse(food.basisValue).positive) {
+        throw const FormatException('Invalid food identity/basis');
+      }
+      for (final conversion in [
+        food.portions.portionGrams,
+        food.portions.densityGramsPerMillilitre
+      ]) {
+        if (conversion != null && (!conversion.isFinite || conversion <= 0)) {
+          throw const FormatException('Invalid food conversion');
+        }
+      }
+    }
     await _db.transaction(() async {
       for (final food in foods) {
         await _db
@@ -54,6 +71,8 @@ final class DriftFoodRepository implements FoodRepository {
   }
 
   CatalogFoodsCompanion _toCompanion(Food food) => CatalogFoodsCompanion.insert(
+        basisUnit: Value(food.basisUnit.name),
+        basisValue: Value(food.basisValue),
         id: food.id,
         name: food.name,
         source: food.source.dataset,
@@ -72,6 +91,8 @@ final class DriftFoodRepository implements FoodRepository {
       );
 
   Food _toFood(CatalogFood row) => Food(
+        basisUnit: FoodUnit.values.byName(row.basisUnit),
+        basisValue: row.basisValue,
         id: row.id,
         name: row.name,
         per100g: NutrientProfile.fromJson(decodeJsonMap(row.per100gJson)),

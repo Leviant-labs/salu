@@ -25,10 +25,10 @@ void main() {
       );
     });
 
-    test('trace contributes zero but is flagged', () {
+    test('trace has no exact numeric value and is flagged', () {
       final sum = NutrientSum.zero.adding(const NutrientTrace());
       expect(sum.value, 0);
-      expect(sum.isComplete, isTrue);
+      expect(sum.isComplete, isFalse);
       expect(sum.includesTrace, isTrue);
     });
 
@@ -104,6 +104,13 @@ void main() {
       expect(NutrientSum.zero.isComplete, isTrue);
       expect(NutrientSum.noData.isComplete, isFalse);
       expect(NutrientSum.noData.value, 0);
+      expect(
+          const NutrientSum(
+              value: 1,
+              isComplete: true,
+              includesTrace: false,
+              includesEstimate: false),
+          isNot(NutrientSum.zero));
     });
 
     test('JSON round-trip preserves values and provenance basis', () {

@@ -2,6 +2,8 @@
 /// trustworthy it is.
 library;
 
+import 'nutrition_contract.dart';
+
 import 'nutrients.dart';
 import 'quantity.dart';
 
@@ -82,7 +84,12 @@ final class Food {
     this.allergens,
     this.dietaryTags = const <String>{},
     this.isComposite = false,
+    this.basisUnit = FoodUnit.g,
+    this.basisValue = '100',
   });
+
+  final FoodUnit basisUnit;
+  final String basisValue;
 
   /// Stable local identifier (not the dataset's identifier; see [source]).
   final String id;
@@ -118,7 +125,11 @@ final class Food {
   final bool isComposite;
 
   /// Nutrients for [grams] of this food, scaled from [per100g].
-  NutrientProfile nutrientsFor(double grams) => per100g.scaled(grams / 100);
+  NutrientProfile nutrientsFor(double grams) =>
+      nutrientsForExactGrams(Exact.parse(grams.toString()));
+  NutrientProfile nutrientsForExactGrams(Exact grams) => basisUnit == FoodUnit.g
+      ? per100g.scaledExact(grams / Exact.parse(basisValue))
+      : throw StateError('Use native-basis quantity calculation for this food');
 
   @override
   String toString() => 'Food($id, $name)';

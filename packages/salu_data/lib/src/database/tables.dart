@@ -6,6 +6,9 @@ import 'package:drift/drift.dart';
 /// unknown/trace/estimated states survive the database round trip. A column per
 /// nutrient would flatten those states into NULLs with no way back.
 class CatalogFoods extends Table {
+  TextColumn get basisUnit => text().withDefault(const Constant('g'))();
+  TextColumn get basisValue => text().withDefault(const Constant('100'))();
+
   /// Local identifier, stable across catalogue updates.
   TextColumn get id => text()();
 
@@ -92,6 +95,9 @@ class LogEntries extends Table {
 /// Nutrients here are for the eaten amount. Catalogue edits must never rewrite
 /// these rows; a correction is a new revision, not an update in place.
 class LogEntryItems extends Table {
+  TextColumn get quantityJson => text().nullable()();
+  TextColumn get sourceJson => text().nullable()();
+
   /// Local identifier.
   TextColumn get id => text()();
 
@@ -110,7 +116,7 @@ class LogEntryItems extends Table {
   TextColumn get name => text()();
 
   /// Eaten mass in grams.
-  RealColumn get grams => real()();
+  RealColumn get grams => real().nullable()();
 
   /// `NutrientProfile.toJson()` for the eaten amount.
   TextColumn get nutrientsJson => text()();
@@ -120,4 +126,21 @@ class LogEntryItems extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Versioned user-owned feature records. Catalogue refreshes cannot touch these.
+class UserDocuments extends Table {
+  TextColumn get collection => text()();
+  TextColumn get id => text()();
+  IntColumn get revision => integer()();
+  TextColumn get payload => text()();
+  @override
+  Set<Column<Object>> get primaryKey => {collection, id};
+}
+
+class AppliedCommands extends Table {
+  TextColumn get requestId => text()();
+  TextColumn get resultJson => text()();
+  @override
+  Set<Column<Object>> get primaryKey => {requestId};
 }

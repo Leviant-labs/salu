@@ -9,6 +9,7 @@ environment:
   sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
+  cryptography: ^2.7.0
   drift: ^2.20.0
   salu_core:
     path: ../salu_core

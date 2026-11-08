@@ -6,7 +6,7 @@
 library;
 
 /// How a user expressed an amount.
-enum QuantityKind { mass, volume, piece }
+enum QuantityKind { mass, volume, piece, serving }
 
 /// An amount as the user expressed it.
 sealed class Quantity {
@@ -96,6 +96,13 @@ final class PieceQuantity extends Quantity {
   String toString() => 'PieceQuantity(${count}x)';
 }
 
+final class ServingQuantity extends Quantity {
+  ServingQuantity(double count) : count = _checked(count, 'count');
+  final double count;
+  @override
+  QuantityKind get kind => QuantityKind.serving;
+}
+
 /// The conversions a specific food declares.
 ///
 /// A food that declares neither conversion can only be logged by mass.
@@ -173,6 +180,8 @@ QuantityResolution resolveQuantity(
   PortionDefinition portions,
 ) {
   switch (quantity) {
+    case ServingQuantity():
+      return resolveQuantity(PieceQuantity(quantity.count), portions);
     case MassQuantity():
       return ResolvedMass(quantity.grams);
     case VolumeQuantity():

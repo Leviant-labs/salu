@@ -1,243 +1,366 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart';
-
+import 'package:salu_data/salu_data.dart';
 import '../../providers.dart';
+import '../../ui_support.dart';
 
-/// The diary for the day the app was opened on.
 class TodayScreen extends ConsumerWidget {
-  /// Creates the screen.
   const TodayScreen({super.key});
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final entries = ref.watch(todayEntriesProvider);
     final date = ref.watch(todayDiaryDateProvider);
-
+    final support = ref.watch(settingsProvider)['support'] == true;
     return entries.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stackTrace) => _ErrorState(
-        message: '$error',
-        onRetry: () => ref.invalidate(todayEntriesProvider),
-      ),
-      data: (list) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        children: [
-          _DaySummary(entries: list, date: date),
-          const SizedBox(height: 24),
-          if (list.isEmpty)
-            const _EmptyState()
-          else
-            for (final entry in list) _EntryTile(entry: entry),
-        ],
-      ),
-    );
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, s) => Center(child: Text('$e')),
+        data: (list) => ListView(padding: const EdgeInsets.all(16), children: [
+              Row(children: [
+                IconButton(
+                    tooltip: tr(context, 'Previous day', 'Dia anterior'),
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: () => _move(ref, date, -1)),
+                Expanded(
+                    child: Text(date.toIso(), textAlign: TextAlign.center)),
+                IconButton(
+                    tooltip: tr(context, 'Next day', 'Dia seguinte'),
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () => _move(ref, date, 1))
+              ]),
+              if (!support)
+                Card(
+                    child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  tr(context, 'Recorded nutrition',
+                                      'Nutrição registada'),
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium),
+                              const SizedBox(height: 12),
+                              for (final key in [
+                                NutrientKey.energyKcal,
+                                NutrientKey.proteinG,
+                                NutrientKey.carbohydrateG,
+                                NutrientKey.fatG,
+                                NutrientKey.fiberG
+                              ])
+                                _NutrientRow(keyValue: key, entries: list),
+                              Text(
+                                  tr(
+                                      context,
+                                      'Recorded amounts describe your log. Missing values stay unknown.',
+                                      'Os valores descrevem o registo. Os valores em falta permanecem desconhecidos.'),
+                                  style: Theme.of(context).textTheme.bodySmall),
+                            ]))),
+              if (list.isEmpty)
+                Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(children: [
+                      const Icon(Icons.restaurant_outlined, size: 40),
+                      Text(
+                          tr(context, 'Nothing logged yet',
+                              'Ainda não há registos'),
+                          style: Theme.of(context).textTheme.titleMedium),
+                      Text(tr(
+                          context,
+                          'Search the Food tab or add your own food.',
+                          'Pesquisa no separador Alimentos ou cria um alimento.'))
+                    ])),
+              for (final entry in list)
+                ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(entry.items.map((i) => i.name).join(', ')),
+                    subtitle: Text(entry.items
+                        .map((i) => i.quantity != null
+                            ? '${number(i.quantity!.value.toDouble())} ${i.quantity!.unit.name}${i.sourceSnapshot?['quantityBasis'] == 'raw-edible-ingredient-allocation' ? tr(context, ' (ingredient allocation)', ' (quantidade do ingrediente)') : ''}'
+                            : i.grams == null
+                                ? tr(context, 'Equal recipe serving',
+                                    'Porção igual da receita')
+                                : '${number(i.grams!)} g')
+                        .join(' · ')),
+                    trailing: PopupMenuButton<String>(
+                        tooltip: tr(context, 'Edit entry', 'Editar registo'),
+                        onSelected: (action) =>
+                            _edit(context, ref, entry, action),
+                        itemBuilder: (c) => [
+                              PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text(tr(c, 'Change quantity',
+                                      'Alterar quantidade'))),
+                              PopupMenuItem(
+                                  value: 'copy',
+                                  child: Text(
+                                      tr(c, 'Repeat now', 'Repetir agora'))),
+                              PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text(tr(
+                                      c, 'Delete entry', 'Eliminar registo')))
+                            ])),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                  icon: const Icon(Icons.fact_check_outlined),
+                  label: Text(tr(context, 'Declare day completeness',
+                      'Declarar estado do dia')),
+                  onPressed: () => _complete(context, ref, date)),
+              OutlinedButton.icon(
+                  icon: const Icon(Icons.insights),
+                  label:
+                      Text(tr(context, 'Weekly check-in', 'Balanço semanal')),
+                  onPressed: () => _checkIn(context, ref, date)),
+              OutlinedButton.icon(
+                  icon: const Icon(Icons.water_drop_outlined),
+                  label: Text(tr(context, 'Record water', 'Registar água')),
+                  onPressed: () => _record(context, ref, 'water', 'ml')),
+              if (!support)
+                OutlinedButton.icon(
+                    icon: const Icon(Icons.monitor_weight_outlined),
+                    label: Text(tr(context, 'Record weight', 'Registar peso')),
+                    onPressed: () => _record(context, ref, 'weight', 'kg')),
+            ]));
+  }
+
+  void _move(WidgetRef ref, DiaryDate date, int delta) {
+    final d = DateTime.utc(date.year, date.month, date.day)
+        .add(Duration(days: delta));
+    ref.read(selectedDiaryDateProvider.notifier).state =
+        DiaryDate(d.year, d.month, d.day);
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref, LoggedEntry entry,
+      String action) async {
+    try {
+      if (action == 'copy') {
+        if (!await confirmAction(
+            context,
+            tr(context, 'Repeat meal now?', 'Repetir refeição agora?'),
+            tr(
+                context,
+                'This records another consumed meal with the saved snapshots.',
+                'Isto regista outra refeição consumida com os valores guardados.'))) {
+          return;
+        }
+        final stamp = EventStamp(
+            instant: ref.read(clockProvider).nowUtc(),
+            offsetMinutes: currentOffsetMinutes());
+        final id = ref.read(idGeneratorProvider).next();
+        await ref.read(entryRepositoryProvider).append(LoggedEntry(
+            id: id,
+            requestId: 'repeat:$id',
+            diaryDate: DiaryDate.assign(stamp),
+            stamp: stamp,
+            channel: EntryChannel.manual,
+            items: entry.items,
+            recordedAt: ref.read(clockProvider).nowUtc()));
+      } else {
+        Exact? factor;
+        if (action == 'edit') {
+          final text = await askText(context,
+              title: tr(context, 'Quantity multiplier',
+                  'Multiplicador da quantidade'),
+              initial: '1');
+          if (text == null) return;
+          factor = Exact.parse(text.replaceAll(',', '.'));
+        } else {
+          if (!await confirmAction(
+              context,
+              tr(context, 'Delete entry?', 'Eliminar registo?'),
+              tr(
+                  context,
+                  'The current diary entry will be removed. Revision history remains in your local archive.',
+                  'O registo será removido do diário. O histórico de revisões permanece no arquivo local.'))) {
+            return;
+          }
+        }
+        final repository = ref.read(entryRepositoryProvider);
+        if (repository is! DriftEntryRepository) {
+          throw StateError('Editing repository unavailable');
+        }
+        await repository.revise(ReviseEntryCommand(
+            requestId: ref.read(idGeneratorProvider).next(),
+            entryId: entry.id,
+            expectedRevision: entry.revision,
+            recordedAt: ref.read(clockProvider).nowUtc(),
+            multiplier: factor,
+            delete: action == 'delete'));
+      }
+      ref.invalidate(todayEntriesProvider);
+    } catch (e) {
+      if (context.mounted) showFailure(context, e);
+    }
+  }
+
+  Future<void> _complete(
+      BuildContext context, WidgetRef ref, DiaryDate date) async {
+    final choice = await showDialog<DiaryCompleteness>(
+        context: context,
+        builder: (c) => SimpleDialog(
+                title: Text(tr(c, 'Day completeness', 'Estado do dia')),
+                children: [
+                  for (final value in DiaryCompleteness.values)
+                    SimpleDialogOption(
+                        onPressed: () => Navigator.pop(c, value),
+                        child: Text(switch (value) {
+                          DiaryCompleteness.unknown =>
+                            tr(c, 'Unknown', 'Desconhecido'),
+                          DiaryCompleteness.partial =>
+                            tr(c, 'Partial record', 'Registo parcial'),
+                          DiaryCompleteness.userDeclaredComplete => tr(
+                              c,
+                              'I recorded all intake',
+                              'Registei tudo o que consumi'),
+                          DiaryCompleteness.confirmedNoIntake => tr(
+                              c,
+                              'I confirm no intake',
+                              'Confirmo que não consumi alimentos')
+                        }))
+                ]));
+    if (choice == null) return;
+    try {
+      if (choice == DiaryCompleteness.confirmedNoIntake &&
+          (await ref.read(entryRepositoryProvider).entriesFor(date))
+              .isNotEmpty) {
+        throw StateError('DAY_HAS_INTAKE');
+      }
+      final w = LocalWorkspace(ref.read(databaseProvider));
+      final old = await w.read('day', date.toIso());
+      await w.put(
+          requestId: ref.read(idGeneratorProvider).next(),
+          collection: 'day',
+          id: date.toIso(),
+          expectedRevision: old?.revision ?? 0,
+          data: {'completeness': choice.name});
+      await w.invalidateHistory();
+      await w.reward('day-review:${date.toIso()}');
+    } catch (e) {
+      if (context.mounted) showFailure(context, e);
+    }
+  }
+
+  Future<void> _checkIn(
+      BuildContext context, WidgetRef ref, DiaryDate date) async {
+    try {
+      final w = LocalWorkspace(ref.read(databaseProvider));
+      final days = <CoachingDay>[];
+      for (var i = 6; i >= 0; i--) {
+        final d = DateTime.utc(date.year, date.month, date.day)
+            .subtract(Duration(days: i));
+        final key = DiaryDate(d.year, d.month, d.day).toIso();
+        final record = await w.read('day', key);
+        days.add(CoachingDay(
+            date: key,
+            revision: record?.revision ?? 0,
+            completeness: DiaryCompleteness.values
+                .byName(record?.data['completeness'] as String? ?? 'unknown')));
+      }
+      final profile = await w.read('profile', 'safety');
+      final result = const CoachingService().checkIn(
+          profile == null
+              ? const SafetyProfile()
+              : SafetyProfile.fromJson(profile.data),
+          days);
+      await w.reward('checkin:${date.toIso()}');
+      if (!context.mounted) return;
+      await showDialog<void>(
+          context: context,
+          builder: (c) => AlertDialog(
+                  title: Text(tr(c, 'Weekly check-in', 'Balanço semanal')),
+                  content: SingleChildScrollView(
+                      child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text(tr(
+                            c,
+                            'Adaptation is disabled. Targets remain under your control.',
+                            'A adaptação está desativada. As metas continuam sob o teu controlo.')),
+                        for (final finding in result.findings)
+                          Padding(
+                              padding: const EdgeInsets.only(top: 16),
+                              child: Text(switch (finding.action) {
+                                CoachingAction.seekAdvice => tr(
+                                    c,
+                                    'Your declarations call for qualified advice. Automatic energy advice is suspended.',
+                                    'As tuas declarações justificam aconselhamento qualificado. O aconselhamento energético automático está suspenso.'),
+                                CoachingAction.improveData => tr(
+                                    c,
+                                    'Some days are incomplete or unknown. Complete a record, mark an estimate explicitly, or take a logging break. Missing days are never counted as zero.',
+                                    'Alguns dias estão incompletos ou são desconhecidos. Completa um registo, identifica as estimativas ou faz uma pausa. Dias em falta nunca contam como zero.'),
+                                _ => tr(
+                                    c,
+                                    'Your day records are declared complete. You can keep your current approach without changing targets. This does not establish nutritional adequacy.',
+                                    'Os dias estão declarados completos. Podes manter a abordagem sem alterar metas. Isto não estabelece adequação nutricional.')
+                              })),
+                        Text('\n${days.first.date} — ${days.last.date}')
+                      ])),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(c),
+                        child: Text(tr(c, 'Close', 'Fechar')))
+                  ]));
+    } catch (e) {
+      if (context.mounted) showFailure(context, e);
+    }
+  }
+
+  Future<void> _record(
+      BuildContext c, WidgetRef ref, String collection, String unit) async {
+    final text =
+        await askText(c, title: tr(c, 'Amount ($unit)', 'Quantidade ($unit)'));
+    if (text == null) return;
+    try {
+      final value = Exact.parse(text.replaceAll(',', '.'));
+      if (!value.positive) throw ArgumentError('Positive amount required');
+      final id = ref.read(idGeneratorProvider).next();
+      await LocalWorkspace(ref.read(databaseProvider)).put(
+          requestId: id,
+          collection: collection,
+          id: id,
+          expectedRevision: 0,
+          data: {
+            'value': value.toJson(),
+            'unit': unit,
+            'time': ref.read(clockProvider).nowUtc().toIso8601String(),
+            'offsetMinutes': currentOffsetMinutes()
+          });
+    } catch (e) {
+      if (c.mounted) showFailure(c, e);
+    }
   }
 }
 
-/// Energy and macro totals with explicit data-coverage wording.
-class _DaySummary extends StatelessWidget {
-  const _DaySummary({required this.entries, required this.date});
-
+class _NutrientRow extends StatelessWidget {
+  const _NutrientRow({required this.keyValue, required this.entries});
+  final NutrientKey keyValue;
   final List<LoggedEntry> entries;
-  final DiaryDate date;
-
-  static double _sum(List<LoggedEntry> entries, NutrientKey key) =>
-      entries.fold(0, (total, entry) => total + entry.nutrientSum(key).value);
-
-  static bool _covered(List<LoggedEntry> entries, NutrientKey key) =>
-      entries.isNotEmpty &&
-      entries.every((entry) => entry.nutrientSum(key).isComplete);
-
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final energy = _sum(entries, NutrientKey.energyKcal);
-    final energyCovered = _covered(entries, NutrientKey.energyKcal);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(date.toIso(), style: theme.textTheme.labelLarge),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(_format(energy), style: theme.textTheme.displaySmall),
-                const SizedBox(width: 6),
-                Text('kcal', style: theme.textTheme.titleMedium),
-              ],
-            ),
-            if (!energyCovered)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'Partial: at least one item has no energy value recorded',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                for (final key in const [
-                  NutrientKey.proteinG,
-                  NutrientKey.carbohydrateG,
-                  NutrientKey.fatG,
-                  NutrientKey.fiberG,
-                ])
-                  _MacroChip(
-                    label: _label(key),
-                    grams: _sum(entries, key),
-                    covered: _covered(entries, key),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One macro reading; unknown coverage is shown as `--`, never as 0 g.
-class _MacroChip extends StatelessWidget {
-  const _MacroChip({
-    required this.label,
-    required this.grams,
-    required this.covered,
-  });
-
-  final String label;
-  final double grams;
-  final bool covered;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: theme.textTheme.labelSmall),
-        Text(
-          covered ? '${_format(grams)} g' : '-- g',
-          style: theme.textTheme.titleSmall,
-        ),
-      ],
-    );
-  }
-}
-
-/// One logged entry.
-class _EntryTile extends StatelessWidget {
-  const _EntryTile({required this.entry});
-
-  final LoggedEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final local = entry.stamp.localWallTime;
-    final time =
-        '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}';
-    final names = entry.items.map((item) => item.name).join(', ');
-    final energy = entry.nutrientSum(NutrientKey.energyKcal);
-
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(child: Text(time)),
-      title: Text(names),
-      subtitle: Text(
-        [
-          '${_format(entry.grams)} g',
-          energy.isComplete
-              ? '${_format(energy.value)} kcal'
-              : 'energy unknown',
-          entry.channel.label,
-        ].join(' · '),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget build(BuildContext c) {
+    final sums = NutrientProfile.combine(
+        entries.expand((e) => e.items.map((i) => i.nutrients)));
+    final sum = sums[keyValue];
+    final value = sum?.recordedValue;
+    final label = switch (keyValue) {
+      NutrientKey.energyKcal => tr(c, 'Energy', 'Energia'),
+      NutrientKey.proteinG => tr(c, 'Protein', 'Proteína'),
+      NutrientKey.carbohydrateG => tr(c, 'Carbohydrate', 'Hidratos de carbono'),
+      NutrientKey.fatG => tr(c, 'Fat', 'Lípidos'),
+      NutrientKey.fiberG => tr(c, 'Fibre', 'Fibra'),
+      _ => keyValue.wire
+    };
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Column(
-        children: [
-          Icon(
-            Icons.restaurant_outlined,
-            size: 40,
-            color: theme.colorScheme.outline,
-          ),
-          const SizedBox(height: 12),
-          Text('Nothing logged yet', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'Search the Food tab to log something. Everything here is stored on '
-            'this device.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ),
-    );
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Wrap(spacing: 12, children: [
+          Text(label),
+          Text(value == null
+              ? '-- ${keyValue.unit}'
+              : '${number(value)} ${keyValue.unit}'),
+          if (value != null && !sum!.isComplete)
+            Text(tr(c, 'partial record', 'registo parcial')),
+          if (sum?.includesEstimate == true)
+            Text(tr(c, 'estimated', 'estimado'))
+        ]));
   }
 }
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 40),
-            const SizedBox(height: 12),
-            Text(
-              'Could not read the diary',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Try again')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-String _format(double value) {
-  if (value == value.roundToDouble()) return value.round().toString();
-  return value.toStringAsFixed(1);
-}
-
-String _label(NutrientKey key) => switch (key) {
-  NutrientKey.proteinG => 'Protein',
-  NutrientKey.carbohydrateG => 'Carbs',
-  NutrientKey.fatG => 'Fat',
-  NutrientKey.fiberG => 'Fiber',
-  NutrientKey.sugarsG => 'Sugars',
-  NutrientKey.saturatedFatG => 'Sat. fat',
-  NutrientKey.sodiumMg => 'Sodium',
-  NutrientKey.energyKcal => 'Energy',
-};

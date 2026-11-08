@@ -6,6 +6,7 @@
 library;
 
 import '../domain/entry.dart';
+import '../domain/nutrition_contract.dart';
 import '../domain/quantity.dart';
 import '../domain/time.dart';
 import 'ports.dart';
@@ -30,6 +31,12 @@ final class LogFoodCommand {
   }) {
     if (requestId.trim().isEmpty) {
       throw ArgumentError.value(requestId, 'requestId', 'must not be empty');
+    }
+    if (offsetMinutes < -840 ||
+        offsetMinutes > 840 ||
+        dayStartHour < 0 ||
+        dayStartHour > 23) {
+      throw ArgumentError('Invalid diary offset/boundary');
     }
     if (foodId.trim().isEmpty) {
       throw ArgumentError.value(foodId, 'foodId', 'must not be empty');
@@ -144,14 +151,54 @@ final class LogFoodHandler {
       );
     }
 
-    final resolution = resolveQuantity(command.quantity, food.portions);
-    if (resolution is UnresolvableQuantity) {
-      return LogFoodRejected(
-        LogFoodRejection.unresolvableQuantity,
-        resolution.reason,
-      );
+    final q = command.quantity;
+    final native = switch (q) {
+      ServingQuantity() =>
+        FoodAmount(q.count.toString(), FoodUnit.serving, measureId: 'serving'),
+      MassQuantity() => FoodAmount(q.grams.toString(), FoodUnit.g),
+      VolumeQuantity() => FoodAmount(q.millilitres.toString(), FoodUnit.ml),
+      PieceQuantity() =>
+        FoodAmount(q.count.toString(), FoodUnit.item, measureId: 'piece'),
+    };
+    final resolution = resolveQuantity(q, food.portions);
+    final double? grams = resolution is ResolvedMass ? resolution.grams : null;
+    final conversions = <QuantityConversion>[
+      if (food.portions.densityGramsPerMillilitre != null &&
+          food.portions.densityGramsPerMillilitre!.isFinite &&
+          food.portions.densityGramsPerMillilitre! > 0)
+        QuantityConversion(
+            from: FoodAmount('1', FoodUnit.ml),
+            to: FoodAmount(
+                food.portions.densityGramsPerMillilitre.toString(), FoodUnit.g),
+            source: 'food-density'),
+      if (food.portions.portionGrams != null &&
+          food.portions.portionGrams!.isFinite &&
+          food.portions.portionGrams! > 0) ...[
+        QuantityConversion(
+            from: FoodAmount('1', FoodUnit.item, measureId: 'piece'),
+            to: FoodAmount(food.portions.portionGrams.toString(), FoodUnit.g),
+            source: 'food-portion'),
+        QuantityConversion(
+            from: FoodAmount('1', FoodUnit.serving, measureId: 'serving'),
+            to: FoodAmount(food.portions.portionGrams.toString(), FoodUnit.g),
+            source: 'food-serving'),
+      ],
+    ];
+    Exact factor;
+    try {
+      factor = quantityRatio(
+          native,
+          FoodAmount(food.basisValue, food.basisUnit,
+              measureId: switch (food.basisUnit) {
+                FoodUnit.item => 'piece',
+                FoodUnit.serving => 'serving',
+                _ => null
+              }),
+          conversions);
+    } on StateError {
+      return const LogFoodRejected(LogFoodRejection.unresolvableQuantity,
+          'No compatible food-specific conversion. Enter a mass for a mass-based food, the label basis quantity, or add a recorded conversion.');
     }
-    final grams = (resolution as ResolvedMass).grams;
 
     final stamp = EventStamp(
       instant: command.eatenAt ?? clock.nowUtc(),
@@ -168,7 +215,20 @@ final class LogFoodHandler {
         LoggedItem(
           name: food.name,
           grams: grams,
-          nutrients: food.nutrientsFor(grams),
+          nutrients: food.per100g.scaledExact(factor),
+          quantity: native,
+          sourceSnapshot: {
+            'dataset': food.source.dataset,
+            'id': food.source.datasetId,
+            'version': food.source.datasetVersion,
+            'preparation': food.preparation.name,
+            'basisUnit': food.basisUnit.name,
+            'basisValue': food.basisValue,
+            'engine': 'nutrition-v2',
+            'policy': 'draft-unapproved',
+            'densityGPerMl': food.portions.densityGramsPerMillilitre,
+            'portionGrams': food.portions.portionGrams
+          },
           foodId: food.id,
         ),
       ],

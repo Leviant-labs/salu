@@ -1,62 +1,104 @@
 name: ci
-
 on:
   push:
     branches: [main]
   pull_request:
-
 jobs:
   packages:
     name: core + data
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: stable
-
-      - name: Install sqlite3
+          sdk: '3.13.7'
+      - name: Install SQLite development library
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-
       - name: Enforce module boundaries
         run: bash tool/check_boundaries.sh
-
-      - name: salu_core — analyze and test
+      - name: Core analysis and contracts
         working-directory: packages/salu_core
         run: |
-          dart pub get
-          dart analyze
+          dart pub get --enforce-lockfile
+          dart analyze --fatal-infos
           dart test
-
-      - name: salu_data — codegen, analyze, test
+      - name: Data generation, migrations, archives and contracts
         working-directory: packages/salu_data
         run: |
-          dart pub get
+          dart pub get --enforce-lockfile
           dart run build_runner build
-          dart analyze
+          dart analyze --fatal-infos
           dart test
-
   app:
-    name: flutter app
+    name: Flutter app
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
-
-      - name: Codegen (drift tables live in salu_data)
+      - name: Install SQLite development library
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Data generation
         working-directory: packages/salu_data
         run: |
-          dart pub get
+          dart pub get --enforce-lockfile
           dart run build_runner build
-
-      - name: Analyze and test
+      - name: Analyze and widget tests
         working-directory: app
         run: |
-          flutter pub get
-          flutter analyze
+          flutter pub get --enforce-lockfile
+          flutter analyze --fatal-infos
           flutter test
+  android:
+    name: Android debug compilation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Data generation
+        working-directory: packages/salu_data
+        run: |
+          dart pub get --enforce-lockfile
+          dart run build_runner build
+      - name: Required Android plugin platforms
+        run: sdkmanager "platforms;android-34" "platforms;android-35" "platforms;android-36" "build-tools;36.0.0"
+      - name: Build debug APK
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build apk --debug --target-platform android-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salu-android-arm64-debug
+          path: app/build/app/outputs/flutter-apk/app-debug.apk
+  ios:
+    name: iOS unsigned compilation
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Data generation
+        working-directory: packages/salu_data
+        run: |
+          dart pub get --enforce-lockfile
+          dart run build_runner build
+      - name: Build iOS without signing
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build ios --debug --no-codesign

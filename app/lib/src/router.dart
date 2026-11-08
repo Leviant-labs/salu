@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/plan/plan_screen.dart';
+import 'ui_support.dart';
 import 'features/search/search_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/today/today_screen.dart';
@@ -63,12 +64,16 @@ class HomeShell extends StatelessWidget {
   /// The active branch container from go_router.
   final StatefulNavigationShell navigationShell;
 
-  static const _titles = ['Today', 'Food', 'Plan', 'Settings'];
-
   @override
   Widget build(BuildContext context) {
+    final titles = [
+      tr(context, 'Today', 'Hoje'),
+      tr(context, 'Food', 'Alimentos'),
+      tr(context, 'Plan', 'Plano'),
+      tr(context, 'Settings', 'Definições')
+    ];
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[navigationShell.currentIndex])),
+      appBar: AppBar(title: Text(titles[navigationShell.currentIndex])),
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
@@ -76,26 +81,26 @@ class HomeShell extends StatelessWidget {
           index,
           initialLocation: index == navigationShell.currentIndex,
         ),
-        destinations: const [
+        destinations: [
           NavigationDestination(
             icon: Icon(Icons.today_outlined),
             selectedIcon: Icon(Icons.today),
-            label: 'Today',
+            label: titles[0],
           ),
           NavigationDestination(
             icon: Icon(Icons.search_outlined),
             selectedIcon: Icon(Icons.search),
-            label: 'Food',
+            label: titles[1],
           ),
           NavigationDestination(
             icon: Icon(Icons.event_note_outlined),
             selectedIcon: Icon(Icons.event_note),
-            label: 'Plan',
+            label: titles[2],
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
+            label: titles[3],
           ),
         ],
       ),

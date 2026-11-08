@@ -10,7 +10,13 @@ part 'app_database.g.dart';
 /// Schema v1 covers the replaceable catalogue and the diary. Targets, plans,
 /// weight and water arrive in later versions, each with a migration step - see
 /// `docs/architecture.md` for the rule that no version ships without one.
-@DriftDatabase(tables: [CatalogFoods, LogEntries, LogEntryItems])
+@DriftDatabase(tables: [
+  CatalogFoods,
+  LogEntries,
+  LogEntryItems,
+  UserDocuments,
+  AppliedCommands
+])
 class AppDatabase extends _$AppDatabase {
   /// Opens a database over [executor].
   AppDatabase(super.executor);
@@ -19,7 +25,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -27,9 +33,19 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (m, from, to) async {
-          // No upgrade path exists yet: v1 is the first schema. When v2 lands, add a
-          // `stepByStep` block here and a test that migrates a v1 fixture forward.
-          throw UnsupportedError('No migration from schema $from to $to');
+          if (from != 1 || to != 2) {
+            throw UnsupportedError('No migration from $from to $to');
+          }
+          await transaction(() async {
+            await m.addColumn(catalogFoods, catalogFoods.basisUnit);
+            await m.addColumn(catalogFoods, catalogFoods.basisValue);
+            await m.alterTable(TableMigration(logEntryItems, newColumns: [
+              logEntryItems.quantityJson,
+              logEntryItems.sourceJson
+            ]));
+            await m.createTable(userDocuments);
+            await m.createTable(appliedCommands);
+          });
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
