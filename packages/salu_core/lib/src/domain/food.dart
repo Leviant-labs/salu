@@ -68,9 +68,9 @@ enum DataQuality {
 
 /// A food the user can log.
 ///
-/// [per100g] is canonical: every nutrient is stated per 100 g of the edible
-/// portion as described by [preparation]. Conversions the food does not declare
-/// stay absent rather than being approximated.
+/// The legacy [per100g] name is retained for old records. Its actual source
+/// basis is [basisValue] and [basisUnit]; definition-specific observations are
+/// retained separately. Conversions must be explicitly recorded for this food.
 final class Food {
   /// Creates a food record.
   const Food({
@@ -86,8 +86,14 @@ final class Food {
     this.isComposite = false,
     this.basisUnit = FoodUnit.g,
     this.basisValue = '100',
+    this.aliases = const [],
+    this.barcodes = const [],
+    this.regions = const [],
+    this.observations = const [],
   });
 
+  final List<String> aliases, barcodes, regions;
+  final List<NutrientObservation> observations;
   final FoodUnit basisUnit;
   final String basisValue;
 

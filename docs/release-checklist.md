@@ -19,9 +19,9 @@ review-blocked. Tests alone do not satisfy clinical or distribution approval.
 |---|---|---|
 | Foundation | Dart MCP handshake and tool calls verified; core/data/app analysis + tests + boundary checks run; native builds recorded separately | automated-pass (host scope) |
 | Arithmetic | native basis, exact decimals, unknown/trace/reported-zero, partial totals tested; production definition adapters not complete | partial; automated evidence |
-| History | snapshot source/quantity, correction revisions, stable diary date and real v1 SQLite migration fixture tested | automated-pass (covered flows) |
-| Recording | custom foods, quantity selection, diary edits and completeness UI implemented; favourites/barcodes/saved meals remain | partial |
-| Catalogue | staged atomic install, FTS, licensed baseline, barcode/manual recovery | pending |
+| History | snapshot source/quantity, correction revisions, explicit consumed instant/offset and assigned diary day; real v1/v2 SQLite upgrade fixtures tested | automated-pass (covered flows) |
+| Recording | custom foods, exact quantity selection, diary edits/time correction, completeness, favourites, barcode/manual recovery and saved-meal review UI; native-device coverage remains | partial |
+| Catalogue | schema 3, FTS5 + fallback, aliases, personal ranking, barcode lookup, review-gated staged atomic packs implemented/tested; raw dataset adapters and licensed PT baseline remain | partial |
 | Targets | declared ownership and references, safety routes, no exercise add-back | pending |
 | Automatic targets | reviewed versioned eligibility and target policies | review-blocked |
 | Adaptation | specified algorithm, simulation + held-out + prospective evaluation | review-blocked |
@@ -39,7 +39,7 @@ review-blocked. Tests alone do not satisfy clinical or distribution approval.
 | Privacy | actual transfers, secure credentials, threat model, retention review | review-blocked |
 
 Android debug compilation passed. APK signature, ZIP integrity and native ELF
-section bounds were checked; see validation-2026-11-08.md. iOS and named-device
-execution remain unverified.
+section bounds were checked; see validation-2026-11-08.md. The prior head also passed unsigned iOS compilation in CI. Named-device
+execution remains unverified; new code requires its own build results.
 
 Do not label this ledger or a debug artifact a completed release while gates are open.

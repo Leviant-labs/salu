@@ -5,6 +5,8 @@ import 'document_validation.dart';
 
 const userCollections = {
   'preferences',
+  'favorite-food',
+  'saved-meal',
   'profile',
   'target',
   'recipe',

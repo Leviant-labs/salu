@@ -67,3 +67,13 @@ final foodSearchProvider = FutureProvider.family<List<Food>, String>((
   if (query.trim().length < 2) return const <Food>[];
   return ref.watch(foodRepositoryProvider).search(query);
 });
+
+final foodLibraryProvider = Provider<FoodLibraryService>((ref) =>
+    FoodLibraryService(ref.watch(databaseProvider), ref.watch(clockProvider),
+        ref.watch(idGeneratorProvider)));
+final favoriteFoodsProvider = FutureProvider<List<Food>>(
+    (ref) => ref.watch(foodLibraryProvider).favorites());
+final recentFoodsProvider = FutureProvider<List<Food>>(
+    (ref) => ref.watch(foodLibraryProvider).recent());
+final savedMealsProvider = FutureProvider<List<StoredDocument>>(
+    (ref) => LocalWorkspace(ref.watch(databaseProvider)).list('saved-meal'));

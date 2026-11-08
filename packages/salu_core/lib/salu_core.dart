@@ -24,3 +24,5 @@ export 'src/domain/planning.dart';
 export 'src/application/review.dart';
 export 'src/application/revise_entry.dart';
 export 'src/application/log_recipe.dart';
+export 'src/domain/catalogue.dart';
+export 'src/domain/observation_projection.dart';

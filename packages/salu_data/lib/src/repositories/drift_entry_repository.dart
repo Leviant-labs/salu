@@ -103,7 +103,13 @@ final class DriftEntryRepository implements EntryRepository {
           'expectedRevision': command.expectedRevision,
           'multiplier': command.multiplier?.toJson(),
           'diaryDate': command.diaryDate?.toIso(),
-          'delete': command.delete
+          'delete': command.delete,
+          'stamp': command.stamp == null
+              ? null
+              : {
+                  'utc': command.stamp!.instantUtc.toIso8601String(),
+                  'offset': command.stamp!.offsetMinutes
+                }
         });
         final prior = await (_db.select(_db.appliedCommands)
               ..where((t) => t.requestId.equals(command.requestId)))
@@ -179,6 +185,11 @@ final class DriftEntryRepository implements EntryRepository {
           await (_db.update(_db.logEntries)..where((t) => t.id.equals(row.id)))
               .write(LogEntriesCompanion(
                   revision: Value(newRevision),
+                  instantUtcMs: Value(
+                      command.stamp?.instantUtc.millisecondsSinceEpoch ??
+                          row.instantUtcMs),
+                  offsetMinutes:
+                      Value(command.stamp?.offsetMinutes ?? row.offsetMinutes),
                   diaryDate: Value(command.diaryDate?.toIso() ?? row.diaryDate),
                   recordedAtMs:
                       Value(command.recordedAt.millisecondsSinceEpoch)));

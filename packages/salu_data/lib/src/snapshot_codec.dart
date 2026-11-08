@@ -14,9 +14,23 @@ Map<String, Object?> foodSnapshot(Food f) => {
       'preparation': f.preparation.name,
       'allergens': f.allergens?.toList(),
       'dietaryTags': f.dietaryTags.toList(),
-      'quality': f.quality.name
+      'quality': f.quality.name,
+      'licence': f.source.licence,
+      'aliases': f.aliases,
+      'barcodes': f.barcodes,
+      'regions': f.regions,
+      'observations': f.observations.map((o) => o.toJson()).toList(),
+      'isComposite': f.isComposite
     };
 Food foodFromSnapshot(Map<String, Object?> j) => Food(
+    aliases: (j['aliases'] as List? ?? []).cast<String>(),
+    barcodes: (j['barcodes'] as List? ?? []).cast<String>(),
+    regions: (j['regions'] as List? ?? []).cast<String>(),
+    observations: [
+      for (final o in j['observations'] as List? ?? [])
+        NutrientObservation.fromJson(Map<String, Object?>.from(o as Map))
+    ],
+    isComposite: j['isComposite'] == true,
     id: j['id']! as String,
     name: j['name']! as String,
     per100g: NutrientProfile.fromJson(
@@ -24,7 +38,8 @@ Food foodFromSnapshot(Map<String, Object?> j) => Food(
     source: FoodSource(
         dataset: j['dataset']! as String,
         datasetId: j['sourceId']! as String,
-        datasetVersion: j['version'] as String?),
+        datasetVersion: j['version'] as String?,
+        licence: j['licence'] as String?),
     basisUnit: FoodUnit.values.byName(j['basisUnit']! as String),
     basisValue: j['basisValue']! as String,
     portions: PortionDefinition(
@@ -64,3 +79,24 @@ RecipeVersion recipeFromSnapshot(Map<String, Object?> j) => RecipeVersion(
                 Exact.fromJson(
                     Map<String, Object?>.from(value['grams'] as Map)))
         ]);
+
+Map<String, Object?> loggedItemSnapshot(LoggedItem i) => {
+      'name': i.name,
+      'grams': i.grams,
+      'foodId': i.foodId,
+      'nutrients': i.nutrients.toJson(),
+      'quantity': i.quantity?.toJson(),
+      'source': i.sourceSnapshot
+    };
+LoggedItem loggedItemFromSnapshot(Map<String, Object?> j) => LoggedItem(
+    name: j['name']! as String,
+    grams: (j['grams'] as num?)?.toDouble(),
+    foodId: j['foodId'] as String?,
+    nutrients: NutrientProfile.fromJson(
+        Map<String, Object?>.from(j['nutrients']! as Map)),
+    quantity: j['quantity'] == null
+        ? null
+        : FoodAmount.fromJson(Map<String, Object?>.from(j['quantity']! as Map)),
+    sourceSnapshot: j['source'] == null
+        ? null
+        : Map<String, Object?>.from(j['source']! as Map));

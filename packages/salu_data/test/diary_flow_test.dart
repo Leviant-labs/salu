@@ -33,9 +33,9 @@ void main() {
 
   tearDown(() => db.close());
 
-  test('schema opens at version 2 with foreign keys enforced', () async {
+  test('schema opens at version 3 with foreign keys enforced', () async {
     final version = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(version.read<int>('user_version'), 2);
+    expect(version.read<int>('user_version'), 3);
 
     final pragma = await db.customSelect('PRAGMA foreign_keys').getSingle();
     expect(pragma.read<int>('foreign_keys'), 1);

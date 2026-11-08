@@ -10,7 +10,11 @@ library;
 final class EventStamp {
   /// Creates a stamp from any [instant]; it is normalised to UTC.
   EventStamp({required DateTime instant, required this.offsetMinutes})
-      : instantUtc = instant.toUtc();
+      : instantUtc = instant.toUtc() {
+    if (offsetMinutes.abs() > 840) {
+      throw ArgumentError('UTC offset must be within ±14 hours');
+    }
+  }
 
   /// The instant, in UTC.
   final DateTime instantUtc;

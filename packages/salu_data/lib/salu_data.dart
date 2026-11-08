@@ -14,3 +14,5 @@ export 'src/archive.dart';
 export 'src/encrypted_archive.dart';
 export 'src/snapshot_codec.dart';
 export 'src/batch_service.dart';
+export 'src/catalogue_install.dart';
+export 'src/food_library.dart';

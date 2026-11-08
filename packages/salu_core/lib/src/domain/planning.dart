@@ -19,7 +19,11 @@ final class RecipeIngredient {
             dietaryTags: Set.unmodifiable(food.dietaryTags),
             isComposite: food.isComposite,
             basisUnit: food.basisUnit,
-            basisValue: food.basisValue) {
+            basisValue: food.basisValue,
+            aliases: List.unmodifiable(food.aliases),
+            barcodes: List.unmodifiable(food.barcodes),
+            regions: List.unmodifiable(food.regions),
+            observations: List.unmodifiable(food.observations)) {
     if (!grams.positive) {
       throw ArgumentError('Ingredient amount must be positive');
     }

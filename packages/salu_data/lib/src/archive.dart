@@ -3,12 +3,14 @@ import 'package:salu_core/salu_core.dart';
 import 'document_validation.dart';
 import 'database/app_database.dart';
 import 'workspace_store.dart';
+import 'repositories/drift_food_repository.dart';
 
 /// Versioned full database archive. Secrets have no database representation.
 final class ArchiveService {
   ArchiveService(this.db);
   final AppDatabase db;
   static const tables = [
+    'catalog_datasets',
     'catalog_foods',
     'log_entries',
     'log_entry_items',
@@ -25,24 +27,32 @@ final class ArchiveService {
               .toList();
         }
         return jsonEncode(
-            {'format': 'salu-archive', 'version': 2, 'tables': data});
+            {'format': 'salu-archive', 'version': 3, 'tables': data});
       });
   Future<void> _load(AppDatabase target, Map<String, Object?> root) async {
-    if (root['format'] != 'salu-archive' || root['version'] != 2) {
+    if (root['format'] != 'salu-archive' ||
+        (root['version'] != 2 && root['version'] != 3)) {
       throw const FormatException('Unsupported archive');
     }
     final data = Map<String, Object?>.from(root['tables']! as Map);
-    if (data.keys.toSet().difference(tables.toSet()).isNotEmpty ||
-        data.length != tables.length) {
+    final expectedTables = root['version'] == 2
+        ? tables.where((t) => t != 'catalog_datasets').toList()
+        : tables;
+    if (data.keys.toSet().difference(expectedTables.toSet()).isNotEmpty ||
+        data.length != expectedTables.length) {
       throw const FormatException('Unexpected tables');
     }
-    for (final table in tables) {
+    for (final table in expectedTables) {
       final columns =
           (await target.customSelect('PRAGMA table_info($table)').get())
               .map((r) => r.read<String>('name'))
               .toSet();
       for (final value in data[table]! as List) {
         final row = Map<String, Object?>.from(value as Map);
+        if (root['version'] == 2 && table == 'catalog_foods') {
+          row['details_json'] = '{}';
+          row['search_aliases'] = '';
+        }
         if (row.keys.toSet().difference(columns).isNotEmpty ||
             !columns.every(row.containsKey)) {
           throw const FormatException('Invalid columns');
@@ -103,6 +113,17 @@ final class ArchiveService {
         await target.customStatement(
             'INSERT INTO $table (${row.keys.join(',')}) VALUES (${List.filled(row.length, '?').join(',')})',
             row.values.toList());
+        if (table == 'catalog_foods') {
+          final food =
+              await DriftFoodRepository(target).findById(row['id']! as String);
+          DriftFoodRepository.validateFoods([food!]);
+        }
+        if (table == 'catalog_datasets' &&
+            ((row['food_count']! as int) < 1 ||
+                ['id', 'version', 'licence', 'attribution', 'review_id']
+                    .any((k) => (row[k]! as String).trim().isEmpty))) {
+          throw const FormatException('Invalid dataset manifest');
+        }
       }
     }
     if ((await target.customSelect('PRAGMA foreign_key_check').get())

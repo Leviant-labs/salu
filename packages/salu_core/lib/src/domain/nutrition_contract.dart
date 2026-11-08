@@ -106,6 +106,10 @@ final class FoodAmount {
     }
   }
   FoodAmount.exact(this.value, this.unit, {this.measureId}) {
+    if ((unit == FoodUnit.item || unit == FoodUnit.serving) &&
+        (measureId?.isEmpty ?? true)) {
+      throw ArgumentError('Count/serving needs a measure identity');
+    }
     if (value.compareTo(Exact.zero) < 0) {
       throw ArgumentError('Negative quantity');
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
+import '../../intake_moment.dart';
 import '../../providers.dart';
 import '../../ui_support.dart';
 
@@ -88,6 +89,14 @@ class TodayScreen extends ConsumerWidget {
                             _edit(context, ref, entry, action),
                         itemBuilder: (c) => [
                               PopupMenuItem(
+                                  value: 'save',
+                                  child: Text(
+                                      tr(c, 'Save meal', 'Guardar refeição'))),
+                              PopupMenuItem(
+                                  value: 'time',
+                                  child: Text(tr(c, 'Correct time or diary day',
+                                      'Corrigir hora ou dia do diário'))),
+                              PopupMenuItem(
                                   value: 'edit',
                                   child: Text(tr(c, 'Change quantity',
                                       'Alterar quantidade'))),
@@ -133,7 +142,36 @@ class TodayScreen extends ConsumerWidget {
   Future<void> _edit(BuildContext context, WidgetRef ref, LoggedEntry entry,
       String action) async {
     try {
-      if (action == 'copy') {
+      if (action == 'save') {
+        final name = await askText(context,
+            title: tr(context, 'Meal name', 'Nome da refeição'));
+        if (name == null) return;
+        await ref.read(foodLibraryProvider).saveMeal(SaveMealCommand(
+            requestId: ref.read(idGeneratorProvider).next(),
+            entryRequestId: entry.requestId,
+            name: name));
+        ref.invalidate(savedMealsProvider);
+      } else if (action == 'time') {
+        final result = await showDialog<ReviewedIntakeMoment>(
+            context: context,
+            builder: (_) => IntakeMomentDialog(
+                stamp: entry.stamp,
+                day: entry.diaryDate,
+                title: tr(context, 'Correct consumed time',
+                    'Corrigir hora de consumo')));
+        if (result == null) return;
+        await DriftEntryRepository(ref.read(databaseProvider)).revise(
+            ReviseEntryCommand(
+                requestId: ref.read(idGeneratorProvider).next(),
+                entryId: entry.id,
+                expectedRevision: entry.revision,
+                recordedAt: ref.read(clockProvider).nowUtc(),
+                stamp: result.stamp,
+                diaryDate: result.day));
+      } else if (action == 'copy') {
+        if (entry.items.any((i) => i.sourceSnapshot?['batchId'] != null)) {
+          throw StateError('BATCH_SELECTION_REQUIRED');
+        }
         if (!await confirmAction(
             context,
             tr(context, 'Repeat meal now?', 'Repetir refeição agora?'),
@@ -188,6 +226,7 @@ class TodayScreen extends ConsumerWidget {
             delete: action == 'delete'));
       }
       ref.invalidate(todayEntriesProvider);
+      ref.invalidate(recentFoodsProvider);
     } catch (e) {
       if (context.mounted) showFailure(context, e);
     }

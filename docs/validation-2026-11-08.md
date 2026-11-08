@@ -49,3 +49,37 @@ installing plugin platforms. These follow-up changes affect CI setup and a
 source annotation only; the saved APK is the original development build from
 commit 0922de5. The workspace became unavailable after source and APK saving,
 so follow-up checks run on GitHub Actions rather than being reported as local runs.
+
+
+## Catalogue and recording continuation
+
+The saved branch at 03e7761 was recovered and tree-hash verified before editing.
+All four jobs at that head passed in Actions run 42485271610, including unsigned
+macOS/iOS compilation. This supersedes the earlier locally-unavailable CI note;
+it does not establish iOS device execution or signing eligibility.
+
+The continuation adds schema 3 and archive format 3 (reads archive 2), FTS5
+search with accent/alias support and a no-FTS fallback, exact GTIN lookup,
+favourites, recently recorded foods, immutable saved-meal snapshots with separate
+intake confirmation, explicit civil time/offset and assigned diary date, and
+source-specific nutrient observations. Supplied energy units are preserved;
+only an absent numeric counterpart derives by 4.184. US/unspecified carbohydrate
+is retained in source observations and excluded from EU available-carbohydrate
+projection. Custom-food inputs retain exact decimals. Ordinary repeat/save paths
+refuse finite cooked-batch allocations; the batch workflow owns those stocks.
+
+Catalogue packs validate in an isolated database and activate transactionally
+only with confirmation and a matching release-pinned dataset/version/licence
+review. No production dataset reviews are bundled. Raw USDA/CIQUAL/OFF adapters,
+a licensed Portuguese baseline and dataset management UI remain outstanding.
+This code does not establish source authorization or approve its own content.
+
+Local validation for this continuation: 67 core tests, 24 data tests and 9 widget
+tests; the data tests include real v2 SQLite upgrades, older archive restoration,
+FTS index updates/fallback, favourite retry semantics, dataset rollback/review
+gates, source-definition preservation, saved-meal confirmation and exact count
+and volume quantities. Widget flows cover local barcode/favourites at 1.5x text,
+backdated exact intake and saved-meal cancellation/confirmation, in addition to
+the existing pt-PT supportive 2x text checks. Core/data/app analysis and boundary
+checks must remain clear before publication. No connected device or simulator
+was used. Native build results for this continuation are recorded separately.

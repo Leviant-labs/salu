@@ -9,6 +9,7 @@ final class ReviseEntryCommand {
       required this.recordedAt,
       this.multiplier,
       this.diaryDate,
+      this.stamp,
       this.delete = false}) {
     if (requestId.isEmpty ||
         entryId.isEmpty ||
@@ -23,5 +24,6 @@ final class ReviseEntryCommand {
   final DateTime recordedAt;
   final Exact? multiplier;
   final DiaryDate? diaryDate;
+  final EventStamp? stamp;
   final bool delete;
 }

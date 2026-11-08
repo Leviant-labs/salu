@@ -6,6 +6,8 @@ import 'package:drift/drift.dart';
 /// unknown/trace/estimated states survive the database round trip. A column per
 /// nutrient would flatten those states into NULLs with no way back.
 class CatalogFoods extends Table {
+  TextColumn get detailsJson => text().withDefault(const Constant('{}'))();
+  TextColumn get searchAliases => text().withDefault(const Constant(''))();
   TextColumn get basisUnit => text().withDefault(const Constant('g'))();
   TextColumn get basisValue => text().withDefault(const Constant('100'))();
 
@@ -143,4 +145,16 @@ class AppliedCommands extends Table {
   TextColumn get resultJson => text()();
   @override
   Set<Column<Object>> get primaryKey => {requestId};
+}
+
+/// Replaceable dataset manifest, kept separate from user-created food libraries.
+class CatalogDatasets extends Table {
+  TextColumn get id => text()();
+  TextColumn get version => text()();
+  TextColumn get licence => text()();
+  TextColumn get attribution => text()();
+  TextColumn get reviewId => text()();
+  IntColumn get foodCount => integer()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
 }

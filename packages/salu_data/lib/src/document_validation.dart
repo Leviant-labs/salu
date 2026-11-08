@@ -4,6 +4,19 @@ import 'snapshot_codec.dart';
 /// Validate domain shapes before writes and before any restore can reach live data.
 void validateUserDocument(String collection, Map<String, Object?> data) {
   switch (collection) {
+    case 'favorite-food':
+      if (data['favorite'] is! bool) {
+        throw const FormatException('Invalid favourite flag');
+      }
+      foodFromSnapshot(Map<String, Object?>.from(data['food']! as Map));
+    case 'saved-meal':
+      if ((data['name']! as String).trim().isEmpty ||
+          (data['items']! as List).isEmpty) {
+        throw const FormatException('Empty saved meal');
+      }
+      for (final item in data['items']! as List) {
+        loggedItemFromSnapshot(Map<String, Object?>.from(item as Map));
+      }
     case 'target':
       DeclaredTarget.fromJson(data);
     case 'recipe':

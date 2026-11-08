@@ -28,7 +28,28 @@ final class LogFoodCommand {
     this.dayStartHour = 0,
     this.eatenAt,
     this.note,
+    this.exactQuantity,
+    this.diaryDate,
   }) {
+    final amount = switch (quantity) {
+      MassQuantity(:final grams) => grams,
+      VolumeQuantity(:final millilitres) => millilitres,
+      PieceQuantity(:final count) => count,
+      ServingQuantity(:final count) => count
+    };
+    final unit = switch (quantity) {
+      MassQuantity() => FoodUnit.g,
+      VolumeQuantity() => FoodUnit.ml,
+      PieceQuantity() => FoodUnit.item,
+      ServingQuantity() => FoodUnit.serving
+    };
+    if (amount <= 0 ||
+        (exactQuantity != null &&
+            (!exactQuantity!.value.positive ||
+                exactQuantity!.unit != unit ||
+                exactQuantity!.value.toDouble() != amount))) {
+      throw ArgumentError('Invalid or mismatched food quantity');
+    }
     if (requestId.trim().isEmpty) {
       throw ArgumentError.value(requestId, 'requestId', 'must not be empty');
     }
@@ -66,6 +87,8 @@ final class LogFoodCommand {
 
   /// Optional user note.
   final String? note;
+  final FoodAmount? exactQuantity;
+  final DiaryDate? diaryDate;
 }
 
 /// Why a log request was rejected.
@@ -152,14 +175,15 @@ final class LogFoodHandler {
     }
 
     final q = command.quantity;
-    final native = switch (q) {
-      ServingQuantity() =>
-        FoodAmount(q.count.toString(), FoodUnit.serving, measureId: 'serving'),
-      MassQuantity() => FoodAmount(q.grams.toString(), FoodUnit.g),
-      VolumeQuantity() => FoodAmount(q.millilitres.toString(), FoodUnit.ml),
-      PieceQuantity() =>
-        FoodAmount(q.count.toString(), FoodUnit.item, measureId: 'piece'),
-    };
+    final native = command.exactQuantity ??
+        switch (q) {
+          ServingQuantity() => FoodAmount(q.count.toString(), FoodUnit.serving,
+              measureId: 'serving'),
+          MassQuantity() => FoodAmount(q.grams.toString(), FoodUnit.g),
+          VolumeQuantity() => FoodAmount(q.millilitres.toString(), FoodUnit.ml),
+          PieceQuantity() =>
+            FoodAmount(q.count.toString(), FoodUnit.item, measureId: 'piece'),
+        };
     final resolution = resolveQuantity(q, food.portions);
     final double? grams = resolution is ResolvedMass ? resolution.grams : null;
     final conversions = <QuantityConversion>[
@@ -208,7 +232,8 @@ final class LogFoodHandler {
     final entry = LoggedEntry(
       id: ids.next(),
       requestId: command.requestId,
-      diaryDate: DiaryDate.assign(stamp, dayStartHour: command.dayStartHour),
+      diaryDate: command.diaryDate ??
+          DiaryDate.assign(stamp, dayStartHour: command.dayStartHour),
       stamp: stamp,
       channel: command.channel,
       items: [
@@ -227,7 +252,9 @@ final class LogFoodHandler {
             'engine': 'nutrition-v2',
             'policy': 'draft-unapproved',
             'densityGPerMl': food.portions.densityGramsPerMillilitre,
-            'portionGrams': food.portions.portionGrams
+            'portionGrams': food.portions.portionGrams,
+            'licence': food.source.licence,
+            'observations': food.observations.map((o) => o.toJson()).toList()
           },
           foodId: food.id,
         ),
