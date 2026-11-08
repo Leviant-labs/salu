@@ -26,13 +26,16 @@ fails the build if that is violated.
 ## Run it
 
 ```bash
-# platform folders (android/, ios/) are generated, not committed
-cd app && bash tool/bootstrap_platforms.sh
+# 1. codegen: drift tables -> app_database.g.dart (not committed)
+cd packages/salu_data && dart pub get && dart run build_runner build
 
-# analysis and tests
-cd packages/salu_core && dart pub get && dart test
-cd packages/salu_data && dart pub get && dart test
-cd app && flutter pub get && flutter analyze && flutter test
+# 2. packages
+cd packages/salu_core && dart pub get && dart analyze && dart test
+cd packages/salu_data && dart analyze && dart test
+
+# 3. app: platform folders (android/, ios/) are generated, not committed
+cd app && bash tool/bootstrap_platforms.sh
+flutter pub get && flutter analyze && flutter test
 ```
 
 `packages/salu_data` needs a sqlite3 shared library on the host

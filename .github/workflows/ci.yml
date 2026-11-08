@@ -29,20 +29,11 @@ jobs:
           dart analyze
           dart test
 
-      - name: salu_data — generated code is current
+      - name: salu_data — codegen, analyze, test
         working-directory: packages/salu_data
         run: |
           dart pub get
           dart run build_runner build
-          if ! git diff --quiet -- lib/src/database/app_database.g.dart; then
-            echo "::error::app_database.g.dart is stale — run build_runner and commit the result"
-            git diff --stat
-            exit 1
-          fi
-
-      - name: salu_data — analyze and test
-        working-directory: packages/salu_data
-        run: |
           dart analyze
           dart test
 
@@ -56,6 +47,12 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      - name: Codegen (drift tables live in salu_data)
+        working-directory: packages/salu_data
+        run: |
+          dart pub get
+          dart run build_runner build
 
       - name: Analyze and test
         working-directory: app
