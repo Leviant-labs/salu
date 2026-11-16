@@ -372,6 +372,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: options.any((meal) => meal.slot.id == _selectedSlotId) ? _selectedSlotId : null,
                 decoration: InputDecoration(labelText: tr(context, 'Selected meal (optional)', 'Refeição selecionada (opcional)')),
                 items: [for (final meal in options)
@@ -490,19 +491,19 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
   Future<bool> _confirmSend(BuildContext context, String text) async {
     return await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: Text(tr(context, 'Send to ChatGPT?', 'Enviar para o ChatGPT?')),
             content: Text(_shareMeasurements
               ? tr(context, 'This sends your message, meal and preference context, measurements and health declaration to ChatGPT for this request. Nothing is queued.', 'Este pedido envia a sua mensagem, refeições e preferências, medidas e declaração de saúde ao ChatGPT. Nada fica em fila.')
               : tr(context, 'This sends your message, meal and preference context to ChatGPT for this request. Measurements and health declarations are not included. Nothing is queued.', 'Este pedido envia a sua mensagem, refeições e preferências ao ChatGPT. As medidas e declarações de saúde não são incluídas. Nada fica em fila.')),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(tr(context, 'Cancel', 'Cancelar')),
               ),
               FilledButton(
                 key: const Key('confirmSend'),
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(tr(context, 'Send', 'Enviar')),
               ),
             ],

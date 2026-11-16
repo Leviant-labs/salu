@@ -59,9 +59,9 @@ which does not replace device or accessibility testing.
   restore, deletion and schema-v1-to-v2 migration tests.
 - Optional ChatGPT plan assistance uses the documented token-sharing sign-in,
   request-specific consent and locally reviewed proposals. No app account or
-  API key is needed. A reported Android sign-in remains stuck on the provider's
-  consent screen; the cause and completed live inference remain unverified.
-  Image upload is not part of this integration.
+  API key is needed. Android sign-in has been reported working on a test phone;
+  completed live inference remains unverified. Image upload is not part of
+  this integration.
 
 The INSA 7.1–2026 workbook is bundled and installed automatically for private
 family testing; Food search shows its source attribution. Existing custom foods
