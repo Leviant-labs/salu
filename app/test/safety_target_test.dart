@@ -24,7 +24,29 @@ Future<void> putProfile(LocalWorkspace w, SafetyProfile profile,
 }
 
 void main() {
-  testWidgets('restrictive declaration suspends existing target',
+  testWidgets('safety choices remain separated at large text on a narrow screen',
+      (tester) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await harness.pump(tester, db, const SettingsScreen(), pt: true, scale: 2);
+    await tester.scrollUntilVisible(find.text('Declarações de segurança'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await Scrollable.ensureVisible(
+        tester.element(find.text('Declarações de segurança')), alignment: 0.5);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Declarações de segurança'));
+    await tester.pumpAndSettle();
+    final adult = find.widgetWithText(DropdownButtonFormField<bool?>, 'Pessoa adulta');
+    final pregnant = find.widgetWithText(DropdownButtonFormField<bool?>, 'Grávida');
+    expect(tester.getRect(adult).bottom, lessThan(tester.getRect(pregnant).top));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('declarations persist atomically without target suspension',
       (tester) async {
     final db = AppDatabase.memory();
     addTearDown(db.close);
@@ -58,8 +80,8 @@ void main() {
     final profile = await workspace.read('profile', 'safety');
     final target = await workspace.read('target', 'current');
     expect(profile!.data['symptoms'], true);
-    expect(target!.data['active'], false);
-    expect(target.revision, 2);
+    expect(target!.data['active'], true);
+    expect(target.revision, 1);
   });
 
   testWidgets('changed safety declarations invalidate target confirmation',
@@ -101,52 +123,12 @@ void main() {
     expect(find.textContaining('SAFETY_DECLARATIONS_CHANGED'), findsOneWidget);
   });
 
-  testWidgets('failed target suspension rolls back the safety update',
+  testWidgets('eating concern does not enable supportive mode automatically',
       (tester) async {
     final db = AppDatabase.memory();
     addTearDown(db.close);
     final workspace = LocalWorkspace(db);
     await putProfile(workspace, eligible);
-    await workspace.put(
-        requestId: 'initial-target',
-        collection: 'target',
-        id: 'current',
-        expectedRevision: 0,
-        data: DeclaredTarget(
-                id: 'current',
-                revision: 1,
-                origin: TargetOrigin.userDeclared,
-                effectiveDate: '2026-01-01',
-                policyVersion: 'user-declared-v1',
-                energyKcal: Exact.parse('2000'))
-            .toJson());
-    await db.customStatement(
-        "CREATE TRIGGER test_abort_target BEFORE UPDATE ON user_documents WHEN OLD.collection = 'target' BEGIN SELECT RAISE(ABORT, 'test target failure'); END");
-    await harness.pump(tester, db, const SettingsScreen());
-    await tester.tap(find.text('Safety declarations'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-        find.text('Symptoms or unexplained changes needing advice'), 200,
-        scrollable: find.byType(Scrollable).last);
-    await tester
-        .tap(find.text('Symptoms or unexplained changes needing advice'));
-    await tester.scrollUntilVisible(find.text('Save declarations'), 200,
-        scrollable: find.byType(Scrollable).last);
-    await tester.tap(find.text('Save declarations'));
-    await tester.pumpAndSettle();
-    expect(
-        (await workspace.read('profile', 'safety'))!.data['symptoms'], false);
-    expect((await workspace.read('target', 'current'))!.data['active'], true);
-    expect(find.textContaining('test target failure'), findsOneWidget);
-  });
-  testWidgets('failed support preference rolls back safety declaration',
-      (tester) async {
-    final db = AppDatabase.memory();
-    addTearDown(db.close);
-    final workspace = LocalWorkspace(db);
-    await putProfile(workspace, eligible);
-    await db.customStatement(
-        "CREATE TRIGGER test_abort_preferences BEFORE INSERT ON user_documents WHEN NEW.collection = 'preferences' BEGIN SELECT RAISE(ABORT, 'test preferences failure'); END");
     await harness.pump(tester, db, const SettingsScreen());
     await tester.tap(find.text('Safety declarations'));
     await tester.pumpAndSettle();
@@ -163,7 +145,7 @@ void main() {
     await tester.tap(find.text('Save declarations'));
     await tester.pumpAndSettle();
     expect((await workspace.read('profile', 'safety'))!.data['eatingConcern'],
-        false);
-    expect(find.textContaining('test preferences failure'), findsOneWidget);
+        true);
+    expect(await workspace.read('preferences', 'app'), isNull);
   });
 }

@@ -1,0 +1,696 @@
+{
+  "assetVersion": "v3",
+  "meals": [
+    {
+      "id": "starter:banana-peanut-oats",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Banana and peanut oats", "pt-PT": "Aveia com banana e amendoim"},
+      "descriptions": {"en": "Oats soaked with banana and peanut butter.", "pt-PT": "Aveia hidratada com banana e amendoim."},
+      "instructions": {"en": ["Mix 200 g water with 80 g oats and let soak about 5 minutes.", "Stir in the sliced banana (120 g) and peanut butter (20 g).", "Serve cold or warm."], "pt-PT": ["Misturar 200 g de água com 80 g de aveia e deixar hidratar cerca de 5 minutos.", "Juntar a banana cortada (120 g) e a manteiga de amendoim (20 g).", "Servir fria ou morna."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 10,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:444", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:636", "grams": "120", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:699", "grams": "20", "allergens": ["peanut"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:1", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:apple-almond-oats",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Apple and almond oats", "pt-PT": "Aveia com maçã e amêndoa"},
+      "descriptions": {"en": "Oats soaked with apple and almonds.", "pt-PT": "Aveia hidratada com maçã e amêndoa."},
+      "instructions": {"en": ["Mix 200 g water with 80 g oats and let soak about 5 minutes.", "Stir in the diced apple (150 g) and chopped almonds (20 g).", "Serve cold or warm."], "pt-PT": ["Misturar 200 g de água com 80 g de aveia e deixar hidratar cerca de 5 minutos.", "Juntar a maçã cortada (150 g) e as amêndoas picadas (20 g).", "Servir fria ou morna."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 10,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:444", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:662", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:697", "grams": "20", "allergens": ["nut"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:1", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:avocado-tomato-toast",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Avocado and tomato toast", "pt-PT": "Torrada com abacate e tomate"},
+      "descriptions": {"en": "Whole-wheat toast with avocado and tomato.", "pt-PT": "Torrada integral com abacate e tomate."},
+      "instructions": {"en": ["Toast the bread (80 g).", "Spread the mashed avocado (100 g) on the toast.", "Top with sliced tomato (100 g)."], "pt-PT": ["Torrar o pão (80 g).", "Barrar o abacate triturado (100 g) na torrada.", "Cobrir com o tomate às fatias (100 g)."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 10,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:433", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:624", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:chickpea-toast",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Chickpea and tomato toast", "pt-PT": "Torrada com grão-de-bico e tomate"},
+      "descriptions": {"en": "Toast with mashed cooked chickpeas and tomato.", "pt-PT": "Torrada com grão-de-bico cozido e tomate."},
+      "instructions": {"en": ["Toast the bread (80 g).", "Mash the cooked chickpeas (140 g) and spread on the toast.", "Top with sliced tomato (80 g) and drizzle with the olive oil (5 g)."], "pt-PT": ["Torrar o pão (80 g).", "Esmagar o grão-de-bico cozido (140 g) e barrar na torrada.", "Cobrir com o tomate às fatias (80 g) e regar com o azeite (5 g)."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 10,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:433", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:536", "grams": "140", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "80", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "5", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:yogurt-banana-oats",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Yogurt, banana and oats", "pt-PT": "Iogurte com banana e aveia"},
+      "descriptions": {"en": "Yogurt with banana and oats.", "pt-PT": "Iogurte com banana e aveia."},
+      "instructions": {"en": ["Put the yogurt (250 g) in a bowl.", "Stir in the sliced banana (120 g) and oats (60 g).", "Serve cold."], "pt-PT": ["Colocar o iogurte (250 g) numa tigela.", "Juntar a banana cortada (120 g) e a aveia (60 g).", "Servir frio."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 5,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:76", "grams": "250", "allergens": ["milk"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:636", "grams": "120", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:444", "grams": "60", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:eggs-tomato-toast",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Eggs and tomato toast", "pt-PT": "Ovos com tomate e torrada"},
+      "descriptions": {"en": "Toast topped with cooked eggs and tomato.", "pt-PT": "Torrada com ovos cozinhados e tomate."},
+      "instructions": {"en": ["Toast the bread (80 g).", "Heat the olive oil (5 g) in a pan and cook the eggs (100 g) until set.", "Serve the eggs over the toast with sliced tomato (100 g)."], "pt-PT": ["Torrar o pão (80 g).", "Aquecer o azeite (5 g) numa frigideira e cozinhar os ovos (100 g).", "Servir os ovos sobre a torrada com o tomate às fatias (100 g)."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 15,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:83", "grams": "100", "allergens": ["egg"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:433", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "5", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegetarian", "pescatarian"],
+      "coldSuitable": false,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:strawberry-yogurt-oats",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Strawberry yogurt oats", "pt-PT": "Iogurte com morango e aveia"},
+      "descriptions": {"en": "Yogurt with strawberries and oats.", "pt-PT": "Iogurte com morangos e aveia."},
+      "instructions": {"en": ["Put the yogurt (250 g) in a bowl.", "Stir in the strawberries (150 g) and oats (60 g).", "Serve cold."], "pt-PT": ["Colocar o iogurte (250 g) numa tigela.", "Juntar os morangos (150 g) e a aveia (60 g).", "Servir frio."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 5,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:76", "grams": "250", "allergens": ["milk"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:676", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:444", "grams": "60", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:spinach-eggs-toast",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "Spinach eggs on toast", "pt-PT": "Ovos com espinafres e torrada"},
+      "descriptions": {"en": "Toast with eggs and spinach.", "pt-PT": "Torrada com ovos e espinafres."},
+      "instructions": {"en": ["Toast the bread (80 g).", "Heat the olive oil (5 g) in a pan, add the spinach (80 g) and cook until wilted.", "Add the eggs (100 g) and cook until set; serve over the toast."], "pt-PT": ["Torrar o pão (80 g).", "Aquecer o azeite (5 g) numa frigideira, juntar os espinafres (80 g) até murcharem.", "Adicionar os ovos (100 g) até cozinharem; servir sobre a torrada."]},
+      "mealLabels": ["breakfast"],
+      "minutes": 15,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:83", "grams": "100", "allergens": ["egg"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:608", "grams": "80", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:433", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "5", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegetarian", "pescatarian"],
+      "coldSuitable": false,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:lentil-rice-bowl",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Lentil rice bowl", "pt-PT": "Taça de lentilhas e arroz"},
+      "descriptions": {"en": "Ready-cooked rice with cooked lentils and vegetables.", "pt-PT": "Arroz já cozido com lentilhas cozidas e legumes."},
+      "instructions": {"en": ["Start with ready-cooked rice (250 g); do not start from dry grains.", "Heat the olive oil (10 g), add the chopped carrot (120 g) and onion (50 g) and cook until softened.", "Add the cooked lentils (180 g), warm through and serve over the rice."], "pt-PT": ["Começar com arroz já cozido (250 g); não partir de grão seco.", "Aquecer o azeite (10 g), juntar a cenoura picada (120 g) e a cebola (50 g) até amolecerem.", "Adicionar as lentilhas cozidas (180 g), aquecer e servir sobre o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 15,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:403", "grams": "250", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:538", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:600", "grams": "120", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:chickpea-tomato-brown-rice",
+      "revision": 1,
+      "titles": {"en": "Chickpea and tomato brown rice", "pt-PT": "Arroz integral com grão-de-bico e tomate"},
+      "descriptions": {"en": "Brown rice with cooked chickpeas and tomato.", "pt-PT": "Arroz integral com grão-de-bico cozido e tomate."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Meanwhile, heat the olive oil (10 g), add the chopped onion (50 g) and tomato (150 g) and cook until soft.", "Add the cooked chickpeas (180 g), warm through and serve with the rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Entretanto, aquecer o azeite (10 g), juntar a cebola picada (50 g) e o tomate (150 g) até amolecerem.", "Adicionar o grão-de-bico cozido (180 g), aquecer e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:536", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:chicken-broccoli-brown-rice",
+      "revision": 1,
+      "titles": {"en": "Chicken and broccoli brown rice", "pt-PT": "Arroz integral com frango e brócolos"},
+      "descriptions": {"en": "Brown rice with chicken and broccoli.", "pt-PT": "Arroz integral com frango e brócolos."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Meanwhile, cook the chicken breast (160 g) thoroughly in the olive oil (10 g).", "Cook the broccoli (200 g) until tender and serve with the chicken and rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Entretanto, cozinhar bem o peito de frango (160 g) no azeite (10 g).", "Cozer os brócolos (200 g) até ficarem macios e servir com o frango e o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:11", "grams": "160", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:550", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": [],
+      "coldSuitable": true,
+      "costTier": "standard",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:tofu-broccoli-brown-rice",
+      "revision": 1,
+      "titles": {"en": "Tofu and broccoli brown rice", "pt-PT": "Arroz integral com tofu e brócolos"},
+      "descriptions": {"en": "Brown rice with tofu and broccoli.", "pt-PT": "Arroz integral com tofu e brócolos."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Heat the olive oil (10 g), add the cubed tofu (200 g) and fry until golden.", "Add the broccoli (200 g), cook until tender and serve with the rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Aquecer o azeite (10 g), juntar o tofu aos cubos (200 g) e fritar até dourar.", "Adicionar os brócolos (200 g), cozinhar até ficarem macios e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:545", "grams": "200", "allergens": ["soy"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:550", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "standard",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:lentil-brown-rice-bowl",
+      "revision": 1,
+      "titles": {"en": "Lentil brown rice bowl", "pt-PT": "Taça de lentilhas com arroz integral"},
+      "descriptions": {"en": "Brown rice with cooked lentils and vegetables.", "pt-PT": "Arroz integral com lentilhas cozidas e legumes."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Heat the olive oil (10 g), add the chopped carrot (120 g) and onion (50 g) and cook until softened.", "Add the cooked lentils (180 g), warm through and serve over the rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Aquecer o azeite (10 g), juntar a cenoura picada (120 g) e a cebola (50 g) até amolecerem.", "Adicionar as lentilhas cozidas (180 g), aquecer e servir sobre o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:538", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:600", "grams": "120", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:hake-tomato-brown-rice",
+      "revision": 1,
+      "titles": {"en": "Hake and tomato brown rice", "pt-PT": "Arroz integral com pescada e tomate"},
+      "descriptions": {"en": "Brown rice with hake and tomato.", "pt-PT": "Arroz integral com pescada e tomate."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Cook the hake (180 g) in the olive oil (10 g) until it flakes.", "Add the chopped tomato (180 g), cook until softened and serve with the rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Cozinhar a pescada (180 g) no azeite (10 g) até desfazer-se em lascas.", "Juntar o tomate picado (180 g), cozinhar até amolecer e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:966", "grams": "180", "allergens": ["fish"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["pescatarian"],
+      "coldSuitable": false,
+      "costTier": "standard",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:turkey-spinach-brown-rice",
+      "revision": 1,
+      "titles": {"en": "Turkey and spinach brown rice", "pt-PT": "Arroz integral com peru e espinafres"},
+      "descriptions": {"en": "Brown rice with turkey and spinach.", "pt-PT": "Arroz integral com peru e espinafres."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Cook the turkey breast (160 g) thoroughly in the olive oil (10 g).", "Add the spinach (150 g), cook until wilted and serve with the rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Cozinhar bem o peito de peru (160 g) no azeite (10 g).", "Juntar os espinafres (150 g), cozinhar até murcharem e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:284", "grams": "160", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:608", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": [],
+      "coldSuitable": true,
+      "costTier": "standard",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:salmon-broccoli-brown-rice",
+      "revision": 1,
+      "titles": {"en": "Salmon and broccoli brown rice", "pt-PT": "Arroz integral com salmão e brócolos"},
+      "descriptions": {"en": "Brown rice with salmon and broccoli.", "pt-PT": "Arroz integral com salmão e brócolos."},
+      "instructions": {"en": ["Cook the raw brown rice (90 g) in water until tender, following the package directions.", "Cook the salmon (160 g) in the olive oil (10 g) until it flakes.", "Cook the broccoli (200 g) until tender and serve with the salmon and rice."], "pt-PT": ["Cozer o arroz integral cru (90 g) em água até ficar macio, seguindo as instruções da embalagem.", "Cozinhar o salmão (160 g) no azeite (10 g) até desfazer-se em lascas.", "Cozer os brócolos (200 g) até ficarem macios e servir com o salmão e o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 45,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:401", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:876", "grams": "160", "allergens": ["fish"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:550", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["pescatarian"],
+      "coldSuitable": false,
+      "costTier": "standard",
+      "grainComposition": "wholeGrain"
+    },
+    {
+      "id": "starter:chickpea-tomato-rice",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Chickpea and tomato rice", "pt-PT": "Arroz com grão-de-bico e tomate"},
+      "descriptions": {"en": "Rice with cooked chickpeas and tomato.", "pt-PT": "Arroz com grão-de-bico cozido e tomate."},
+      "instructions": {"en": ["Cook the raw long-grain rice (90 g) in water until tender.", "Heat the olive oil (10 g), add the chopped onion (50 g) and tomato (150 g) and cook until soft.", "Add the cooked chickpeas (180 g), warm through and serve with the rice."], "pt-PT": ["Cozer o arroz de grão longo cru (90 g) em água até ficar macio.", "Aquecer o azeite (10 g), juntar a cebola picada (50 g) e o tomate (150 g) até amolecerem.", "Adicionar o grão-de-bico cozido (180 g), aquecer e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 25,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:402", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:536", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:bean-potato-skillet",
+      "revision": 1,
+      "titles": {"en": "Bean and potato skillet", "pt-PT": "Feijão e batata na frigideira"},
+      "descriptions": {"en": "Potato skillet with cooked red beans and tomato.", "pt-PT": "Batata na frigideira com feijão vermelho cozido e tomate."},
+      "instructions": {"en": ["Heat the olive oil (10 g) and fry the sliced potato (300 g) until golden.", "Add the chopped onion (50 g) and tomato (150 g) and cook until softened.", "Add the cooked red beans (180 g), warm through and serve hot."], "pt-PT": ["Aquecer o azeite (10 g) e fritar a batata fatiada (300 g) até dourar.", "Adicionar a cebola picada (50 g) e o tomate (150 g) até amolecerem.", "Adicionar o feijão vermelho cozido (180 g), aquecer e servir quente."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 30,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:585", "grams": "300", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:240002", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": false,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:tofu-broccoli-rice",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Tofu and broccoli rice", "pt-PT": "Tofu e brócolos com arroz"},
+      "descriptions": {"en": "Ready-cooked rice with tofu and broccoli.", "pt-PT": "Arroz já cozido com tofu e brócolos."},
+      "instructions": {"en": ["Start with ready-cooked rice (250 g); do not start from dry grains.", "Heat the olive oil (10 g), add the cubed tofu (200 g) and fry until golden.", "Add the broccoli (200 g), cook until tender and serve with the rice."], "pt-PT": ["Começar com arroz já cozido (250 g); não partir de grão seco.", "Aquecer o azeite (10 g), juntar o tofu aos cubos (200 g) e fritar até dourar.", "Adicionar os brócolos (200 g), cozinhar até ficarem macios e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 15,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:545", "grams": "200", "allergens": ["soy"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:403", "grams": "250", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:550", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:lentil-tomato-pasta",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Lentil tomato pasta", "pt-PT": "Massa com lentilhas e tomate"},
+      "descriptions": {"en": "Pasta with cooked lentils and tomato.", "pt-PT": "Massa com lentilhas cozidas e tomate."},
+      "instructions": {"en": ["Cook the raw small pasta (90 g) in salted water until tender; drain.", "Heat the olive oil (10 g), add the chopped onion (50 g) and tomato (200 g) and cook until soft.", "Add the cooked lentils (180 g), warm through and serve over the pasta."], "pt-PT": ["Cozer a massa miúda crua (90 g) em água salgada até ficar macia; escorrer.", "Aquecer o azeite (10 g), juntar a cebola picada (50 g) e o tomate (200 g) até amolecerem.", "Adicionar as lentilhas cozidas (180 g), aquecer e servir sobre a massa."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 20,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:418", "grams": "90", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:538", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:chickpea-rice-salad",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Chickpea rice salad", "pt-PT": "Salada de grão-de-bico e arroz"},
+      "descriptions": {"en": "Ready-cooked rice salad with cooked chickpeas.", "pt-PT": "Salada de arroz já cozido com grão-de-bico cozido."},
+      "instructions": {"en": ["Start with ready-cooked rice (250 g); do not start from dry grains.", "Combine the rice with the cooked chickpeas (180 g), chopped cucumber (150 g) and tomato (100 g).", "Drizzle with the olive oil (10 g), toss and serve cold."], "pt-PT": ["Começar com arroz já cozido (250 g); não partir de grão seco.", "Misturar o arroz com o grão-de-bico cozido (180 g), o pepino picado (150 g) e o tomate (100 g).", "Regar com o azeite (10 g), mexer e servir frio."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 10,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:403", "grams": "250", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:536", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:611", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:white-bean-spinach-soup",
+      "grainComposition": "wholeGrain",
+      "revision": 1,
+      "titles": {"en": "White bean and spinach soup", "pt-PT": "Sopa de feijão branco e espinafres"},
+      "descriptions": {"en": "Soup with cooked white beans and spinach.", "pt-PT": "Sopa com feijão branco cozido e espinafres."},
+      "instructions": {"en": ["Heat the olive oil (10 g), add the chopped onion (50 g) and carrot (100 g) and cook until softened.", "Add 300 g water and the cooked white beans (220 g); simmer.", "Add the spinach (100 g) and cook until wilted; serve with the bread (80 g)."], "pt-PT": ["Aquecer o azeite (10 g), juntar a cebola picada (50 g) e a cenoura (100 g) até amolecerem.", "Adicionar 300 g de água e o feijão branco cozido (220 g); deixar ferver.", "Adicionar os espinafres (100 g) até murcharem; servir com o pão (80 g)."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 20,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:532", "grams": "220", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:608", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:600", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:433", "grams": "80", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:1", "grams": "300", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": false,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:tofu-potato-pan",
+      "revision": 1,
+      "titles": {"en": "Tofu and potato pan", "pt-PT": "Tofu e batata na frigideira"},
+      "descriptions": {"en": "Potato pan with tofu and spinach.", "pt-PT": "Batata na frigideira com tofu e espinafres."},
+      "instructions": {"en": ["Heat the olive oil (10 g) and fry the sliced potato (300 g) until golden.", "Add the cubed tofu (200 g) and fry until golden.", "Add the spinach (100 g) and cook until wilted; serve hot."], "pt-PT": ["Aquecer o azeite (10 g) e fritar a batata fatiada (300 g) até dourar.", "Adicionar o tofu aos cubos (200 g) e fritar até dourar.", "Adicionar os espinafres (100 g) até murcharem; servir quente."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 30,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:545", "grams": "200", "allergens": ["soy"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:585", "grams": "300", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:608", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": false,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:chicken-broccoli-rice",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Chicken and broccoli rice", "pt-PT": "Frango e brócolos com arroz"},
+      "descriptions": {"en": "Chicken with broccoli and rice.", "pt-PT": "Frango com brócolos e arroz."},
+      "instructions": {"en": ["Cook the raw long-grain rice (90 g) in water until tender.", "Heat the olive oil (10 g), add the diced chicken (160 g) and fry until cooked through.", "Add the broccoli (200 g), cook until tender and serve with the rice."], "pt-PT": ["Cozer o arroz de grão longo cru (90 g) em água até ficar macio.", "Aquecer o azeite (10 g), juntar o frango aos cubos (160 g) e fritar até cozinhar.", "Adicionar os brócolos (200 g), cozinhar até ficarem macios e servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 25,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:11", "grams": "160", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:402", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:550", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": [],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:lemon-chicken-potatoes",
+      "revision": 1,
+      "titles": {"en": "Lemon chicken and potatoes", "pt-PT": "Frango com limão e batatas"},
+      "descriptions": {"en": "Chicken and potatoes with lemon.", "pt-PT": "Frango e batatas com limão."},
+      "instructions": {"en": ["Heat the olive oil (10 g) in an oven pan.", "Add the chicken pieces (160 g), sliced potato (300 g) and chopped carrot (150 g); turn until golden.", "Add the lemon juice (20 g), cover and cook until the chicken is cooked through; serve hot."], "pt-PT": ["Aquecer o azeite (10 g) num tabuleiro.", "Adicionar o frango (160 g), a batata fatiada (300 g) e a cenoura (150 g); virar até dourar.", "Adicionar o sumo de limão (20 g), tapar e cozinhar até o frango ficar pronto; servir quente."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 30,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:11", "grams": "160", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:585", "grams": "300", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:600", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:661", "grams": "20", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": [],
+      "coldSuitable": false,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:turkey-tomato-pasta",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Turkey tomato pasta", "pt-PT": "Massa com peru e tomate"},
+      "descriptions": {"en": "Pasta with turkey and tomato.", "pt-PT": "Massa com peru e tomate."},
+      "instructions": {"en": ["Cook the raw small pasta (90 g) in salted water until tender; drain.", "Heat the olive oil (10 g), add the diced turkey (160 g) and fry until cooked through.", "Add the tomato (200 g) and onion (50 g), cook until soft and serve over the pasta."], "pt-PT": ["Cozer a massa miúda crua (90 g) em água salgada até ficar macia; escorrer.", "Aquecer o azeite (10 g), juntar o peru aos cubos (160 g) e fritar até cozinhar.", "Adicionar o tomate (200 g) e a cebola (50 g), cozinhar até amolecerem e servir sobre a massa."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 25,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:284", "grams": "160", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:418", "grams": "90", "allergens": ["gluten"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:597", "grams": "50", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": [],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:turkey-spinach-rice",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Turkey and spinach rice", "pt-PT": "Arroz com peru e espinafres"},
+      "descriptions": {"en": "Rice with turkey and spinach.", "pt-PT": "Arroz com peru e espinafres."},
+      "instructions": {"en": ["Cook the raw long-grain rice (90 g) in water until tender.", "Heat the olive oil (10 g), add the diced turkey (160 g) and fry until cooked through.", "Add the spinach (150 g) and cook until wilted; serve with the rice."], "pt-PT": ["Cozer o arroz de grão longo cru (90 g) em água até ficar macio.", "Aquecer o azeite (10 g), juntar o peru aos cubos (160 g) e fritar até cozinhar.", "Adicionar os espinafres (150 g) até murcharem; servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 25,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:284", "grams": "160", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:402", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:608", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": [],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:salmon-potato-broccoli",
+      "revision": 1,
+      "titles": {"en": "Salmon, potatoes and broccoli", "pt-PT": "Salmão, batatas e brócolos"},
+      "descriptions": {"en": "Salmon with potatoes and broccoli.", "pt-PT": "Salmão com batatas e brócolos."},
+      "instructions": {"en": ["Heat the olive oil (10 g) in an oven pan.", "Add the sliced potato (300 g) and broccoli (200 g) and cook until tender.", "Add the salmon (160 g) and bake until cooked through; serve hot."], "pt-PT": ["Aquecer o azeite (10 g) num tabuleiro.", "Adicionar a batata fatiada (300 g) e os brócolos (200 g) até ficarem macios.", "Adicionar o salmão (160 g) e assar até cozinhar; servir quente."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 30,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:876", "grams": "160", "allergens": ["fish"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:585", "grams": "300", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:550", "grams": "200", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["pescatarian"],
+      "coldSuitable": false,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:hake-tomato-rice",
+      "grainComposition": "refinedGrain",
+      "revision": 1,
+      "titles": {"en": "Hake and tomato rice", "pt-PT": "Arroz com pescada e tomate"},
+      "descriptions": {"en": "Rice with hake and tomato.", "pt-PT": "Arroz com pescada e tomate."},
+      "instructions": {"en": ["Cook the raw long-grain rice (90 g) in water until tender.", "Heat the olive oil (10 g), add the tomato (180 g) and cook until soft.", "Add the hake (180 g) and cook until the fish flakes easily; serve with the rice."], "pt-PT": ["Cozer o arroz de grão longo cru (90 g) em água até ficar macio.", "Aquecer o azeite (10 g), juntar o tomate (180 g) até amolecer.", "Adicionar a pescada (180 g) até lascar facilmente; servir com o arroz."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 25,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:966", "grams": "180", "allergens": ["fish"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:402", "grams": "90", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["pescatarian"],
+      "coldSuitable": false,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:egg-potato-skillet",
+      "revision": 1,
+      "titles": {"en": "Egg and potato skillet", "pt-PT": "Ovos e batata na frigideira"},
+      "descriptions": {"en": "Potato skillet with eggs and spinach.", "pt-PT": "Batata na frigideira com ovos e espinafres."},
+      "instructions": {"en": ["Heat the olive oil (10 g) and fry the sliced potato (300 g) until golden.", "Add the spinach (100 g) and cook until wilted.", "Add the beaten eggs (150 g) and cook until set; serve hot."], "pt-PT": ["Aquecer o azeite (10 g) e fritar a batata fatiada (300 g) até dourar.", "Adicionar os espinafres (100 g) até murcharem.", "Adicionar os ovos batidos (150 g) até cozinharem; servir quente."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 30,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:83", "grams": "150", "allergens": ["egg"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:585", "grams": "300", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:608", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:395", "grams": "10", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegetarian", "pescatarian"],
+      "coldSuitable": false,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:tuna-chickpea-salad",
+      "revision": 1,
+      "titles": {"en": "Tuna and chickpea salad", "pt-PT": "Salada de atum e grão-de-bico"},
+      "descriptions": {"en": "Salad with tuna and cooked chickpeas.", "pt-PT": "Salada com atum e grão-de-bico cozido."},
+      "instructions": {"en": ["Drain the tuna (100 g) and combine with the cooked chickpeas (180 g).", "Add the chopped cucumber (150 g) and tomato (100 g).", "Toss and serve cold."], "pt-PT": ["Escorrer o atum (100 g) e misturar com o grão-de-bico cozido (180 g).", "Adicionar o pepino picado (150 g) e o tomate (100 g).", "Misturar e servir frio."]},
+      "mealLabels": ["lunch", "dinner"],
+      "minutes": 10,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:814", "grams": "100", "allergens": ["fish"], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:536", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:611", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:615", "grams": "100", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["pescatarian"],
+      "coldSuitable": true,
+      "costTier": "standard"
+    },
+    {
+      "id": "starter:apple-almonds",
+      "revision": 1,
+      "titles": {"en": "Apple and almonds", "pt-PT": "Maçã e amêndoas"},
+      "descriptions": {"en": "Apple slices with almonds.", "pt-PT": "Fatias de maçã com amêndoas."},
+      "instructions": {"en": ["Wash the apple (180 g) and cut into slices.", "Serve with the almonds (25 g)."], "pt-PT": ["Lavar a maçã (180 g) e cortar em fatias.", "Servir com as amêndoas (25 g)."]},
+      "mealLabels": ["snack"],
+      "minutes": 2,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:662", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:697", "grams": "25", "allergens": ["nut"], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:pear-peanuts",
+      "revision": 1,
+      "titles": {"en": "Pear and peanuts", "pt-PT": "Pera e amendoins"},
+      "descriptions": {"en": "Pear slices with peanuts.", "pt-PT": "Fatias de pera com amendoins."},
+      "instructions": {"en": ["Wash the pear (180 g) and cut into slices.", "Serve with the peanuts (25 g)."], "pt-PT": ["Lavar a pera (180 g) e cortar em fatias.", "Servir com os amendoins (25 g)."]},
+      "mealLabels": ["snack"],
+      "minutes": 2,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:680", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:699", "grams": "25", "allergens": ["peanut"], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:apple-strawberries",
+      "revision": 1,
+      "titles": {"en": "Apple and strawberries", "pt-PT": "Maçã e morangos"},
+      "descriptions": {"en": "Apple slices with strawberries.", "pt-PT": "Fatias de maçã com morangos."},
+      "instructions": {"en": ["Wash the apple (180 g) and cut into slices.", "Serve with the strawberries (150 g)."], "pt-PT": ["Lavar a maçã (180 g) e cortar em fatias.", "Servir com os morangos (150 g)."]},
+      "mealLabels": ["snack"],
+      "minutes": 2,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:662", "grams": "180", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:676", "grams": "150", "allergens": [], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    },
+    {
+      "id": "starter:banana-peanuts",
+      "revision": 1,
+      "titles": {"en": "Banana and peanuts", "pt-PT": "Banana e amendoins"},
+      "descriptions": {"en": "Banana with peanuts.", "pt-PT": "Banana com amendoins."},
+      "instructions": {"en": ["Peel the banana (120 g) and slice.", "Serve with the peanuts (25 g)."], "pt-PT": ["Descascar a banana (120 g) e cortar em fatias.", "Servir com os amendoins (25 g)."]},
+      "mealLabels": ["snack"],
+      "minutes": 2,
+      "servings": "1",
+      "ingredients": [
+        {"sourceFoodId": "insa-bdca:636", "grams": "120", "allergens": [], "declarationSource": "salu-starter-v1"},
+        {"sourceFoodId": "insa-bdca:699", "grams": "25", "allergens": ["peanut"], "declarationSource": "salu-starter-v1"}
+      ],
+      "dietaryTags": ["vegan", "vegetarian", "pescatarian"],
+      "coldSuitable": true,
+      "costTier": "lowerCost"
+    }
+  ]
+}

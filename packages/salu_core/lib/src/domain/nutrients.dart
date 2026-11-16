@@ -27,7 +27,90 @@ enum NutrientKey {
   carbohydrateG('carbohydrate_g', 'g'),
   fiberG('fiber_g', 'g'),
   sugarsG('sugars_g', 'g'),
-  sodiumMg('sodium_mg', 'mg');
+  sodiumMg('sodium_mg', 'mg'),
+
+  /// Cis-monounsaturated fatty acids, summed by the source.
+  monounsaturatedFatG('monounsaturated_fat_g', 'g'),
+
+  /// Cis-polyunsaturated fatty acids, summed by the source.
+  polyunsaturatedFatG('polyunsaturated_fat_g', 'g'),
+
+  /// Linoleic acid (18:2 n-6), a component of [polyunsaturatedFatG].
+  linoleicAcidG('linoleic_acid_g', 'g'),
+
+  /// Trans fatty acids, summed by the source.
+  transFatG('trans_fat_g', 'g'),
+
+  /// Starch, a component of available carbohydrate.
+  starchG('starch_g', 'g'),
+
+  /// Oligosaccharides, a component of available carbohydrate.
+  oligosaccharidesG('oligosaccharides_g', 'g'),
+
+  /// Salt as declared by the source. A source may calculate it from sodium; an
+  /// adapter records that provenance instead of assuming the relation.
+  saltG('salt_g', 'g'),
+
+  /// Ethanol.
+  alcoholG('alcohol_g', 'g'),
+
+  /// Water content, including volatile matter lost on drying.
+  waterG('water_g', 'g'),
+
+  /// Organic acids, which contribute energy in the EU declared-energy factors.
+  organicAcidsG('organic_acids_g', 'g'),
+
+  /// Mineral residue after incineration.
+  ashG('ash_g', 'g'),
+
+  cholesterolMg('cholesterol_mg', 'mg'),
+
+  /// Vitamin A expressed as [NutrientDefinitions.retinolEquivalents], which
+  /// already includes the provitamin A carotenoids listed separately below.
+  vitaminAUg('vitamin_a_ug', 'µg'),
+
+  /// β-carotene equivalents, a source-calculated vitamin A contribution.
+  betaCaroteneEquivalentUg('beta_carotene_equivalent_ug', 'µg'),
+
+  /// α-carotene, a provitamin A carotenoid.
+  alphaCaroteneUg('alpha_carotene_ug', 'µg'),
+
+  /// Total β-carotene. Distinct from [betaCaroteneEquivalentUg].
+  betaCaroteneUg('beta_carotene_ug', 'µg'),
+
+  /// β-cryptoxanthin, a provitamin A carotenoid.
+  betaCryptoxanthinUg('beta_cryptoxanthin_ug', 'µg'),
+
+  lycopeneUg('lycopene_ug', 'µg'),
+  luteinUg('lutein_ug', 'µg'),
+  zeaxanthinUg('zeaxanthin_ug', 'µg'),
+
+  /// Vitamin E as α-tocopherol.
+  vitaminEMg('vitamin_e_mg', 'mg'),
+
+  thiaminMg('thiamin_mg', 'mg'),
+  riboflavinMg('riboflavin_mg', 'mg'),
+  niacinMg('niacin_mg', 'mg'),
+
+  /// Niacin equivalents, which a source may calculate as niacin plus
+  /// [tryptophan60Mg]. Distinct from [niacinMg]; the two are never summed.
+  niacinEquivalentMg('niacin_equivalent_mg', 'mg'),
+
+  /// Tryptophan/60, the niacin-equivalent expression of tryptophan. It is not
+  /// a tryptophan mass and is kept separate from [niacinEquivalentMg].
+  tryptophan60Mg('tryptophan_60_mg', 'mg'),
+
+  vitaminB6Mg('vitamin_b6_mg', 'mg'),
+  vitaminB12Ug('vitamin_b12_ug', 'µg'),
+
+  /// Total folates, expressed on the source's folic-acid basis.
+  folateUg('folate_ug', 'µg'),
+
+  potassiumMg('potassium_mg', 'mg'),
+  phosphorusMg('phosphorus_mg', 'mg'),
+  magnesiumMg('magnesium_mg', 'mg'),
+  zincMg('zinc_mg', 'mg'),
+  seleniumUg('selenium_ug', 'µg');
 
   const NutrientKey(this.wire, this.unit);
 
@@ -180,7 +263,10 @@ final class NutrientReported extends NutrientValue {
   double get numericValue => value;
   @override
   Map<String, Object?> toJson() => {
-        'state': value == 0 ? 'reported_zero' : 'reported',
+        // The state follows the exact value: a double presentation of a tiny
+        // rational can underflow to zero and must not relabel it as a printed
+        // zero. A true zero is still reported_zero.
+        'state': exact.compareTo(Exact.zero) == 0 ? 'reported_zero' : 'reported',
         'value': value,
         'exact': exact.toJson()
       };

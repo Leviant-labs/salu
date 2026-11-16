@@ -36,38 +36,47 @@ which does not replace device or accessibility testing.
   incompatible dimensions require recorded conversions. Unknown grams stay absent.
 - Nutrient states, exact decimal/rational scaling, partial-record completeness,
   quantity/source snapshots, stable diary dates and explicit diary corrections.
-- Declared targets with ownership, blocked automatic generation/adaptation, safety
-  declarations and a supportive display mode.
-- Immutable recipe versions, equal-serving calculations, finite cooked batches,
-  transactional batch intake, deterministic organization-only dinner plans,
-  pinned meals and grocery checkmarks. Plans never auto-log consumption.
-- Local weekly coverage/safety/hold-course check-ins, water/weight records and
-  idempotent engagement events without food/weight/fasting penalties.
+- Guided onboarding proposes a seven-day plan from bundled meals, without food
+  search or recipe creation. Plans and groceries are reviewed before saving;
+  meals are never automatically logged. Existing recipes, batches and history
+  remain available.
+- Grocery names are simplified for shopping while retaining source identities.
+  Ready-cooked rice is shown as a cooked-weight requirement, not silently
+  converted to an estimated quantity of dry rice.
+- Guided plans can favor explicitly classified whole-grain options when lipid
+  conditions are declared. Brown-rice meals start from raw INSA rice and take
+  45 minutes; shorter cooking limits exclude them. This is a relative preference,
+  not a guarantee of clinical suitability.
+- Optional starting calorie and macro estimates use explicit profile inputs and
+  exact arithmetic. They are estimates, not measured requirements; manual and
+  clinician-provided targets retain their ownership. Planning also works without
+  numbers.
+- Local weekly coverage/safety/hold-course check-ins, water records and an
+  endpoint-only weight reading log (no trend, target or calorie proposals),
+  plus idempotent engagement events without food/weight/fasting penalties.
 - English and European Portuguese screens, scalable layouts and labelled controls.
 - Versioned full archive, encrypted user-controlled backup, CSV, staged atomic
   restore, deletion and schema-v1-to-v2 migration tests.
-- Provider capability/authorization/consent/revision contracts and failure tests.
-  No provider transport is connected and no image is queued for upload.
+- Optional ChatGPT plan assistance uses the documented token-sharing sign-in,
+  request-specific consent and locally reviewed proposals. No app account or
+  API key is needed. A reported Android sign-in remains stuck on the provider's
+  consent screen; the cause and completed live inference remain unverified.
+  Image upload is not part of this integration.
 
-The fixture catalogue is debug-only and clearly source-tagged. It is not a
-licensed/coverage-validated production dataset. Custom foods remain usable without
-any fixture or provider. Host-only profiling is in `docs/host-profile.json`.
+The INSA 7.1–2026 workbook is bundled and installed automatically for private
+family testing; Food search shows its source attribution. Existing custom foods
+and diary snapshots are retained. The data are not coverage-validated, and wider
+redistribution rights remain unconfirmed. INSA available carbohydrate is retained
+with its source definition, separately from EU carbohydrate totals. Host-only
+profiling is in `docs/host-profile.json`.
 
 ## Remaining release work
 
-Production catalogue/import/licensing and Portuguese coverage; source-specific
-nutrient definitions throughout persistence/import/UI; reference-policy editions
-and comparisons in the app; all coaching families; full planning schedule and
-objective controls, repair/relaxation revisions, planned-batch stock and grocery
-editing; saved meals/favourites/barcodes; complete tracking/reward presentation;
-provider transports and draft-review screens; native health adapters and durable
-reconciliation; native backup/cache/deletion audits; device accessibility,
-performance and end-to-end evidence. Platform signing/distribution is not configured.
-
-The safety/target/adaptation policies, provider eligibility/terms, clinical copy
-and data rights require their own reviews. Unit tests and debug compilation do
-not constitute those approvals. Automatic targets return `POLICY_NOT_APPROVED`;
-adaptation stays disabled for ordinary users.
+Physical Android and iPhone testing, live ChatGPT sign-in and completed inference,
+accessibility, performance, native health integration, wider distribution rights,
+and platform signing remain open. Private testing does not impose approval-based
+feature locks; clinical and distribution review would be separate work before a
+wider release.
 
 ## Dependency boundaries
 

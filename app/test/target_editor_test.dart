@@ -6,6 +6,34 @@ import 'package:salu_data/salu_data.dart';
 import 'offline_flows_test.dart' as harness;
 
 void main() {
+  testWidgets('starting estimate is reviewed before saving', (t) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    await NutritionProfileStore(db).save(
+      requestId: 'profile',
+      expectedRevision: 0,
+      profile: NutritionProfile(
+        goal: AdultGoal.loseWeight,
+        ageYears: 30,
+        heightCm: Exact.parse('180'),
+        weightKg: Exact.parse('80'),
+        equationConstant: 5,
+        activityPal: Exact.parse('1.6'),
+      ),
+    );
+    await harness.pump(t, db, const SettingsScreen());
+    await t.tap(find.text('Recalculate starting estimate'));
+    await t.pumpAndSettle();
+    expect(await LocalWorkspace(db).read('target', 'current'), isNull);
+    expect(find.textContaining('2563 kcal'), findsOneWidget);
+    await t.tap(find.text('Use estimate'));
+    await t.pumpAndSettle();
+    final target = DeclaredTarget.fromJson(
+        (await LocalWorkspace(db).read('target', 'current'))!.data);
+    expect(target.origin, TargetOrigin.calculatedEstimate);
+    expect(target.energyKcal, Exact.parse('2563.2'));
+  });
+
   testWidgets('target supports explicit macros and clinician ownership',
       (t) async {
     final db = AppDatabase.memory();
@@ -33,7 +61,7 @@ void main() {
     expect(target.proteinG, Exact.parse('90.5'));
     expect(target.fatG, Exact.parse('70'));
     expect(target.carbohydrateG, Exact.parse('200'));
-    expect(target.active, isFalse);
+    expect(target.active, isTrue);
   });
   testWidgets('target rejects conflicting macros before confirmation',
       (t) async {

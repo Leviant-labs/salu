@@ -1,8 +1,24 @@
 # Calorie App — Product & Engineering Spec
 
-Status: draft v2 · 2026-11-07
+Status: draft v2 · revised 2026-11-11.
+Companion to `nutrition-engine-spec.md` draft v2; that document owns the domain
+contracts this spec references.
 Stack: **Flutter (Dart)**, iOS + Android.
 Supersedes draft v1. No application implementation is implied by this document.
+
+**Current private-test cutover:** Guided setup creates a reviewable seven-day meal
+plan from bundled recipes, optionally with calculated starting estimates. Today,
+My plan, Assistant and Progress are the four primary destinations. Settings and
+Diary remain accessible separately. Manual and clinician targets retain their
+ownership; calculated estimates are explicitly labelled and require explicit
+inputs. Private testing has no clinical-approval or population-based feature
+locks. Broader proposals in this draft, including photo and health integrations,
+are not claims of implemented capabilities.
+
+Optional ChatGPT plan assistance follows the documented token-sharing sign-in,
+with request-specific consent, strict structured suggestions and local review
+before writes. Offline planning does not depend on it. Physical Android/iPhone
+callback and completed live inference are not yet verified.
 
 ## 1. Product contract
 
@@ -10,15 +26,21 @@ A local-first nutrition app with food logging, meal planning, coaching, health
 integration, and supportive gamification. No app accounts or backend auth.
 User records persist on device in SQLite.
 
-**The app implements its features. AI is an optional interaction layer.**
+**The app implements its features. The assistant is an optional interaction layer.**
+
+Terminology: "assistant", "model", "inference", and "provider" mean the optional
+artificial-intelligence layer. Bare "AI" is reserved for Adequate Intake in
+nutrition references and is rendered "Adequate Intake (AI)" (nutrition spec
+§1.1).
 
 - Nutrition arithmetic, targets, expenditure estimation, planning constraints,
   grocery lists, coaching findings, and rewards must work without inference.
-- AI may interpret a request, extract a label, suggest food matches from a photo,
-  invoke app operations through validated commands, or explain app findings.
+- The assistant may interpret a request, extract a label, suggest food matches
+  from a photo, invoke app operations through validated commands, or explain app
+  findings.
 - ChatGPT-powered image input is in scope. A custom small on-device food vision
   model is a much later research project, not a release dependency or fallback.
-- Planning and coaching are core features, not optional AI add-ons.
+- Planning and coaching are core features, not optional assistant add-ons.
 - No backend does not mean no network: optional providers, dataset downloads,
   and platform health exchange are separate integrations with separate policies.
 
@@ -29,7 +51,7 @@ still need validation before release.
 ## 2. Architecture and authority
 
 ```text
-Manual UI / optional AI interaction
+Manual UI / optional assistant interaction
                  |
         Typed commands and queries
                  |
@@ -44,17 +66,52 @@ Manual UI / optional AI interaction
       Explicit health/export adapters
 ```
 
+### 2.1 Document authority
+
+`nutrition-engine-spec.md` owns nutrient definitions and arithmetic, quantity and
+snapshot semantics, eligibility/target/planning/coaching rule behavior, typed
+domain contracts, and algorithm acceptance. This document owns product scope,
+user-facing flows, consent UX, provider authorization, storage/export/privacy,
+delivery gates, and the platform stack.
+
+Neither document overrides the other in its own area. A conflicting statement
+must be revised in the owning document before release; a cross-reference is not
+a substitute for that revision. This document does not assert implementation:
+the release ledger records it separately.
+
+### 2.2 One write path
+
 The same application services serve forms, buttons, and conversational requests.
-No core service imports a remote inference provider. AI cannot execute arbitrary
-SQL or mutate the database directly.
+No core service imports a remote inference provider. The assistant cannot execute
+arbitrary SQL, read the database directly, or mutate records without a typed
+command.
 
 - Reads expose only the necessary, user-authorized information.
-- Writes have typed parameters, domain validation, and appropriate confirmation.
-- AI-derived food entries and target/plan changes require review before commit.
+- Writes have typed parameters, domain validation, and the confirmation their
+  handler requires. An imported or assistant-proposed value is not a write.
+- Assistant-derived food entries, corrections, targets, and plan changes require
+  a local-user confirmation of the current revision before commit.
 - Multi-step changes are transactional where applicable.
-- Requests have stable IDs; retries do not create duplicate logs or health writes.
+- Every write carries a stable request ID; retries return the original receipt
+  rather than create duplicate logs, targets, plans, or health writes.
 - An async result is attached to its originating draft and revision. A stale
-  result cannot replace an edited or committed meal.
+  result cannot replace an edited, cancelled, or committed draft.
+- The assistant's authority is the allowlist and role model in nutrition spec
+  §2.1–2.2. It may issue only assistant-invocable proposal commands and
+  explanations; it cannot confirm, commit, grant consent, switch providers, read
+  credentials, activate datasets, write health records, or delete data.
+- Assistant output, OCR text, label text, and imported content are untrusted
+  data, never instructions. Embedded text cannot change the allowlist, role,
+  policy, or confirmation state.
+- Consent is scoped per provider, purpose, payload class, request, draft, and
+  revision. It is given on a UI surface, consumed by one transfer, and permanently
+  revocable; a model-rendered prompt is not a consent surface.
+- Review is an event by the local user against one revision, not a status that
+  survives an edit and not a claim of accuracy. There is no `verified` state; a
+  reviewed estimate remains an estimate with its provenance.
+- Explanations preserve the source finding's evidence, numbers, and
+  qualifications. They cannot add derived numbers, diagnoses, or treatment
+  advice (nutrition spec §2.6).
 - Disabling every provider must leave all core workflows functional.
 
 ## 3. Food logging and optional vision
@@ -80,8 +137,17 @@ Keep two distinct operations and UI descriptions:
 
 Both return editable drafts. The deterministic nutrition service calculates
 nutrition from confirmed food records and quantities. Explicit label values may
-create a reviewed custom food; generic model estimates are not silently promoted
-to verified database facts.
+create a reviewed custom food with `label_printed` provenance; generic model
+estimates remain `assistant_inferred`/`estimated` after review and are never
+promoted to measured or "verified" database facts.
+
+A proposed quantity carries its method and limits (nutrition spec §4.1.1). A
+photo estimate is not a measurement, cannot carry an uncalibrated percentage
+confidence, and cannot establish batch yield or pantry stock. The confirmed
+quantity is stored separately from the estimate and is what the arithmetic uses.
+Review accepts a value for logging; it does not verify accuracy. If a printed
+serving mass is missing, the label quantity stays per serving/item rather than
+being converted to invented grams.
 
 - Image sharing requires disclosure and consent for the selected provider and
   purpose. Merely connecting a provider does not authorize unrelated transfers.
@@ -95,6 +161,31 @@ to verified database facts.
 ### 3.3 Other interaction shortcuts
 
 - Natural-language logging resolves to structured food-and-quantity drafts.
+- All chat free text is safety-scanned locally before any command runs; the
+  assistant is not the detector. A validated typed command consumes only the
+  text spans bound to its typed arguments. The matcher still scans every span,
+  including consumed command spans; only residual routing is limited to
+  unconsumed text, so an eligible phrase inside an exact bound food name still
+  creates `user_reported` while the command executes. All non-whitespace,
+  non-punctuation text that is not consumed — including the residual of a mixed
+  command+symptom message, and any free-text argument value that is not a
+  manual-UI safe input mode — enters the typed safety channel and can only
+  become `user_reported`, `unclassified_report`, or `declined`. It is never
+  silently ignored. For example, "log 100 g apple, also I have a numb tongue"
+  logs the apple and routes the residual to safety intake, not silence. A
+  rejected or unlisted command consumes nothing, so all of its text enters
+  safety intake.
+  Safe input modes are manual-UI fields only: they retain or echo the value, scan
+  it, offer the safety channel on an eligible match, show a persistent
+  non-safety notice with a visible safety-channel action, and never assert the
+  text is non-symptomatic. A model cannot declare a span, field, or argument
+  safe.
+  Provider absence or extraction failure does not justify fabricated "no
+  symptoms", triage, urgency, or reassurance. This proposed safety routing is
+  not a gate on starting estimates in the private-testing implementation.
+- Chat is not a bypass. Conversational changes use the same allowlisted command,
+  validation, revision check, and local-user confirmation as the UI. A chat-only
+  write path is a defect, not a feature.
 - Voice is optional. Device/locale support and offline availability must be
   checked; never silently substitute remote ASR for an on-device privacy promise.
 - Combining inputs preserves provenance and supports merge/replace decisions
@@ -106,9 +197,11 @@ to verified database facts.
 
 ### 4.1 Sources and delivery
 
-Candidate sources: USDA FoodData Central, France's CIQUAL reference table, and
-Open Food Facts for packaged products. Measure Portuguese coverage rather than
-assuming these sources provide complete European coverage.
+INSA's Portuguese food-composition database is the primary catalogue target;
+France's CIQUAL is a fallback, not a substitute silently presented as INSA.
+USDA FoodData Central and Open Food Facts remain other candidate sources.
+Verify source-specific distribution rights and measure Portuguese coverage;
+neither available nutrient fields nor coverage imply completeness.
 
 - Bundle a useful baseline and offer versioned regional downloads. Offline means
   installed data remains usable; obtaining a new dataset requires a transfer.
@@ -129,14 +222,19 @@ assuming these sources provide complete European coverage.
 Foods, nutrient observations, quantity conversions, recipes and recipe versions,
 saved meals, meal drafts, logged food snapshots, and source metadata.
 
-- Distinguish unknown, measured zero, trace, and estimated values.
-- Store calories/macros/fiber/sugars/sodium and supported vitamins/minerals;
-  additional constituents are allowed. No unsupported '95+ micronutrients'
-  completeness promise.
+- Distinguish unknown, measured zero, trace, and estimated values. A value keeps
+  its source qualifier through import, review, and correction; there is no
+  `verified` upgrade (nutrition spec §1.1, §4.1).
+- Track and expose all supported source nutrients and constituents, including
+  energy, protein, carbohydrate, sugars, fats, fibre, vitamins and minerals.
+  Availability depends on source coverage and compatible definitions; missing
+  values remain unknown, not zero. Do not promise a fixed micronutrient count.
 - Nutrient displays expose missing coverage; do not diagnose deficiency from
   incomplete logs or missing nutrient values.
-- Canonical mass in grams. Volume conversion requires food-specific density;
-  piece/serving conversions require a recorded portion weight.
+- Canonical mass in grams only when a supported conversion exists. Volume
+  conversion requires a food-specific density; piece/serving conversion requires
+  a recorded portion weight. A volume-only record remains per ml and is computed
+  by the dimensional contract (nutrition spec §4.2) without an invented mass.
 - Preserve raw/cooked state, edible quantity, recipe yield, and finished weight
   when known. Do not treat water gain/loss as nutrient gain/loss.
 - Recipe handling must document retained/discarded ingredients and any nutrient
@@ -163,13 +261,27 @@ time from calendar-day calculations for fasting, DST, and travel.
 - Nutrient reference targets have a named source/version and appropriate profile
   inputs; a target is not a medical diagnosis or prescription.
 - Manual overrides remain available within the documented safety policy and are
-  not silently overwritten by check-ins.
+  not silently overwritten by check-ins. An assistant may propose a target the
+  user typed or stated; it cannot generate, install, or approve an automatic
+  target, and the recorded origin remains `userDeclared` (nutrition spec §2.2,
+  §7.1).
+- The intended population is adults. Goals are user-selected (loss,
+  maintenance or gain); conditions and preferences are explicitly declared,
+  editable and optional. Future condition-aware dietary and meal-schedule
+  recommendations should account for, at minimum, diabetes, a separate history
+  or risk of low blood glucose, high triglycerides and high cholesterol, without
+  inferring diagnoses, disease severity or medication needs. The intended output
+  is food composition and meal organization, not treatment or medication
+  advice. Condition-aware dietary advice still requires reviewed policy and
+  safety routing; declarations alone do not certify a recommendation as safe.
 
 ### 5.2 Adaptive mechanism
 
-Engineering approach: estimate a smoothed weight trend and combine it with
-sufficiently complete logged intake over a rolling observation window. Blend
-with the baseline rather than reacting to a single weigh-in.
+The intended adaptation uses weight as its only body measurement; smartwatch
+and other health measurements are not prerequisites. A candidate may also use
+explicitly recorded food intake and goal history. A weight trend alone does not
+identify energy expenditure or the cause of a change. Any algorithm and its
+inputs remain subject to the nutrition specification's evaluation gate.
 
 - Distinguish missing intake from a deliberately confirmed complete day.
 - Require defined observation duration, weigh-in coverage, and intake coverage.
@@ -214,8 +326,10 @@ Pipeline:
 - Plans are not intake. Logging a planned meal is a separate confirmation and
   supports changed portions, substitutions, and leftovers.
 - Grocery aggregation merges compatible quantities; do not invent conversions.
-- AI can translate 'make dinners quicker' into validated planner inputs or
-  explain a swap. It does not implement the planner or certify its output.
+- The assistant can translate 'make dinners quicker' into validated planner
+  inputs or explain a swap. It does not implement the planner, certify its
+  output, or accept a relaxation; that requires the user's confirmation on the
+  current plan revision (nutrition spec §2.3, §9.3).
 
 ## 7. Deterministic coaching — core
 
@@ -228,10 +342,18 @@ Weekly check-ins and on-demand insight cards work with no provider connected.
 - Use templated language as the complete baseline experience.
 - Suggest holding course or improving data quality before unnecessary target
   changes. No moral judgments about food or punishment for missed days.
-- AI may explain findings and answer questions using authorized app queries.
-  Derived numeric claims must come from tool results. Clearly distinguish
-  general model commentary from app-computed findings.
-- Conversational changes route back through ordinary reviewed app operations.
+- The assistant may explain findings and answer questions using authorized app
+  queries. Derived numeric claims must come from tool results. Clearly
+  distinguish general model commentary from app-computed findings.
+- An explanation preserves the finding's evidence and limitations and is
+  validated before display (nutrition spec §2.6). Numbers, units, evidence
+  references, and required qualifications are checked exhaustively; a detected
+  forbidden phrase or a stripped caveat withdraws the explanation and shows the
+  deterministic template. Forbidden-phrase detection is list-based and does not
+  guarantee catching every paraphrase.
+- Conversational changes route back through ordinary reviewed app operations and
+  local-user confirmation. Chat is not a confirmation channel and cannot satisfy
+  review, grant consent, or bypass an allowlist (nutrition spec §2.2–2.3).
 - Define population/safety boundaries before release: minors, pregnancy or
   breastfeeding, disordered-eating concerns, medical nutrition needs, aggressive
   goals, and symptom-related requests. Obtain qualified review of these rules.
@@ -260,8 +382,20 @@ No on-device food model in the release dependency graph.
 
 - Separate provider authentication/transport from typed task adapters and app
   commands. A provider implements capabilities, not nutrition policy.
+- Use the typed request/result envelope and audit snapshot in nutrition spec
+  §2.1 and §2.5. Record provider id, provider-reported model id or `unknown`,
+  adapter version, prompt/schema versions, consent id, and disposition. Never
+  infer a model identity from behavior or marketing.
 - Capability checks cover image input, structured output/tool calls, context,
   streaming, and cancellation. Validate results regardless of advertised support.
+  Advertising `toolCalls` grants no command permission; the allowlist for that
+  request is the only permission (nutrition spec §2.2).
+- Tool output is parsed by a versioned adapter against the declared schema.
+  Unknown fields, wrong units, unsupported tasks, and free-text commands are
+  rejected. No command is executed from prose.
+- The assistant cannot grant or change consent, authorize a provider, switch
+  providers, read credentials, approve a dataset, or confirm a draft. Those are
+  local-user UI actions with their own surfaces.
 - ChatGPT integration uses supported public-client authorization where eligible;
   verify app distribution/commercial eligibility, scopes, redirect handling,
   transport limitations, models, and terms before release.
@@ -272,8 +406,17 @@ No on-device food model in the release dependency graph.
   otherwise show observed errors/state and a provider usage-management link.
 - Never switch providers, spend BYOK credit, or transmit a queued photo without
   appropriate user authorization. Quota exhaustion never blocks core features.
-- Provider data is untrusted input. Treat OCR text, food names, and imported
-  content as data, not instructions; validate all resulting commands.
+- Provider data is untrusted input. Treat OCR text, food names, label text, and
+  imported content as data, not instructions. Embedded text cannot widen the
+  allowlist, change a role, grant consent, or skip confirmation; validate all
+  resulting commands and discard a stale or mismatched result.
+- Audit snapshots contain a payload hash and algorithm, payload classes,
+  structured proposal, and provenance by default, not raw media, raw chat text,
+  or a safety quote span. A quote is shown transiently for category
+  confirmation; its persisted form is a hash/length unless the explicit
+  sensitive-text retention setting is on, and that setting is covered by
+  deletion. A `reported_text_ref` is null when text was not retained (nutrition
+  spec §2.5, §3.5).
 
 ## 10. Health exchange, backup, export, and deletion
 
@@ -356,6 +499,19 @@ Verify exact package/type support; do not assume full cross-platform symmetry.
    deletion limitations, population boundaries, and reward behavior.
 9. Benchmark Portuguese label and food examples for coverage, correction effort,
    OCR quality, token use, and actual logging time.
+10. Assistant boundary tests: allowlist denial, consent withdrawal, stale
+    revision/`Superseded`, idempotent replay and conflicting retry, prompt
+    injection in label text, untrusted tool output, mandatory local-user
+    confirmation, explanation evidence/caveat validation, and model-identity
+    `unknown` handling (nutrition spec §2, §12).
+11. Safety-channel tests: fail-closed routing of all unconsumed free text
+    (including mixed command+symptom messages and free-text arguments), consumed
+    span typing/overlap rejection, matching of an eligible phrase inside a
+    consumed exact-name span, safe-input-mode retention/scan behavior, eligible
+    phrase matching, negated/quoted/attributed ineligibility, classification
+    transitions and decline reasons, `unclassified_report` blocking only new
+    automatic advice, approved-copy selection, and no assistant-authored triage
+    or reassurance (nutrition spec §3.5, §12).
 
 ## 13. Deferred work and unresolved release decisions
 
@@ -370,3 +526,12 @@ Before release resolve: dataset licences and regional size/coverage; recipe
 content rights and curation; validated target/coaching safety parameters;
 ChatGPT integration eligibility and actual capabilities; platform backup policy;
 and device-specific performance budgets. These are gates, not assumed facts.
+
+Assistant-specific unresolved decisions: approval and localisation of the
+symptom phrase table and safety copy; the negation/quotation/attribution matcher
+rules; the closed schema of manual-UI safe input modes and their visible copy;
+the reviewer for the command allowlist and each high-impact command;
+whether a provider exposes a stable model identifier (absence must remain
+`unknown`); retention limits for raw media/chat text and safety quotes, and
+their deletion path; and the schema/version support window for adapters. None of
+these is established by this draft.

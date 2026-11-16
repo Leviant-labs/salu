@@ -21,6 +21,11 @@ enum InferenceTask {
 
   /// Explain an app-computed finding in plain language.
   explainFinding,
+
+  /// Turn a typed plan-assistance suggestion into a reviewable proposal.
+  /// The suggestion is schema-constrained `salu-plan-assistance-v1` output;
+  /// the provider never writes meals, targets, or diary entries directly.
+  planAssistance,
 }
 
 /// Optional provider features. Advertised support is a hint, never a guarantee.

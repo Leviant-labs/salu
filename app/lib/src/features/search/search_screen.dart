@@ -97,32 +97,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   ? Center(
                       child: Padding(
                           padding: const EdgeInsets.all(24),
-                          child: Text(tr(
-                              c,
-                              'Type two characters to search. If there is no match, create a food from its label.',
-                              'Escreve dois caracteres para pesquisar. Se não houver resultados, cria um alimento a partir do rótulo.'))))
+                          child: Text(_emptyMessage(c))))
                   : ListView.builder(
                       itemCount: foods.length,
                       itemBuilder: (c, i) {
                         final f = foods[i];
                         return ListTile(
                             title: Text(f.name),
-                            subtitle: Text(
-                                '${f.source.dataset} · ${f.basisValue} ${f.basisUnit.name}\n${tr(c, 'Source:', 'Fonte:')} ${f.source.datasetVersion ?? tr(c, 'version unknown', 'versão desconhecida')}'),
+                            subtitle: Text(_resultSubtitle(c, f)),
                             isThreeLine: true,
-                            onTap: () => showDialog<void>(
-                                context: c,
-                                builder: (_) => AlertDialog(
-                                        title: Text(f.name),
-                                        content: SingleChildScrollView(
-                                            child: Text(
-                                                '${f.source.dataset} · ${f.source.datasetId}\n${f.source.datasetVersion ?? tr(c, "Version unknown", "Versão desconhecida")}\n${f.source.licence ?? tr(c, "Licence unknown", "Licença desconhecida")}\n${f.preparation.name}\n${f.observations.map((o) => '${o.nutrient.id} (${o.nutrient.unit}; ${o.nutrient.definition}): ${o.qualifier.name} ${o.amount ?? ""}').join('\n')}')),
-                                        actions: [
-                                          TextButton(
-                                              onPressed: () => Navigator.pop(c),
-                                              child: Text(
-                                                  tr(c, 'Close', 'Fechar')))
-                                        ])),
+                            onTap: () => _showFoodDetails(c, f),
                             trailing:
                                 Row(mainAxisSize: MainAxisSize.min, children: [
                               IconButton(
@@ -154,8 +138,129 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   icon: const Icon(Icons.add_circle_outline),
                                   onPressed: () => _log(c, f))
                             ]));
-                      })))
+                      }))),
+      const _CatalogueNotice()
     ]);
+  }
+
+  /// Provenance line for one result. The development fixture is labelled as an
+  /// unverified placeholder so it can never be mistaken for imported INSA data.
+  String _resultSubtitle(BuildContext c, Food f) {
+    final provenance =
+        '${f.source.dataset} · ${f.basisValue} ${f.basisUnit.name}\n'
+        '${tr(c, 'Source:', 'Fonte:')} ${f.source.datasetVersion ?? tr(c, 'version unknown', 'versão desconhecida')}';
+    if (f.source.dataset == 'dev-fixture') {
+      return '$provenance\n${tr(c, 'Placeholder fixture - not verified data', 'Dados de exemplo - não verificados')}';
+    }
+    return provenance;
+  }
+
+  /// An empty list can mean an incomplete query, a bounded local search with no
+  /// match, or an empty favourites/recent list. They get distinct guidance so a
+  /// miss reads as "not in the installed catalogue", never as an error.
+  String _emptyMessage(BuildContext c) {
+    if (view == 'favorites') {
+      return tr(
+          c,
+          'No favourite foods yet. Tap the star on a result to keep it here.',
+          'Ainda não há favoritos. Toca na estrela de um resultado para o guardar aqui.');
+    }
+    if (view == 'recent') {
+      return tr(
+          c,
+          'Nothing recorded recently yet. Foods you record appear here.',
+          'Ainda não há alimentos registados recentemente. Os alimentos que registares aparecem aqui.');
+    }
+    if (query.trim().length < 2) {
+      return tr(c, 'Type at least two characters to search.',
+          'Escreve pelo menos dois caracteres para pesquisar.');
+    }
+    return tr(
+        c,
+        'No local match. Create a food from its label or check the barcode; no network lookup is made.',
+        'Sem resultados locais. Cria um alimento a partir do rótulo ou verifica o código de barras; não é feita nenhuma pesquisa na rede.');
+  }
+
+  /// Shows one catalogue record: provenance plus every retained nutrient
+  /// observation, including explicit source gaps.
+  ///
+  /// The list is the source's own record, not a reference comparison. Blank
+  /// source cells remain unknown observations and are never shown as zero.
+  Future<void> _showFoodDetails(BuildContext c, Food f) {
+    final observations = f.observations;
+    final valued = observations.where((o) => o.amount != null).toList();
+    final unquantified = observations
+        .where((o) =>
+            o.amount == null &&
+            (o.qualifier == ObservationQualifier.trace ||
+                o.qualifier == ObservationQualifier.belowDetection))
+        .toList();
+    final unknown = observations
+        .where((o) => o.qualifier == ObservationQualifier.unknown)
+        .toList();
+    final projectedKeys = f.per100g.knownKeys.toList();
+    final manifests = ref.read(installedCataloguesProvider).asData?.value ??
+        const <InstalledCatalogueManifest>[];
+    String? attribution;
+    for (final manifest in manifests) {
+      if (manifest.dataset == f.source.dataset &&
+          manifest.attribution.trim().isNotEmpty) {
+        attribution = manifest.attribution;
+        break;
+      }
+    }
+    return showDialog<void>(
+        context: c,
+        builder: (dialogContext) => AlertDialog(
+            title: Text(f.name),
+            content: SingleChildScrollView(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SelectableText(
+                          '${f.source.dataset} · ${f.source.datasetId}'),
+                      SelectableText(
+                          '${tr(c, 'Version', 'Versão')}: ${f.source.datasetVersion ?? tr(c, 'unknown', 'desconhecida')}'),
+                      SelectableText(
+                          '${tr(c, 'Licence', 'Licença')}: ${f.source.licence ?? tr(c, 'unknown', 'desconhecida')}'),
+                      if (attribution != null) SelectableText(attribution),
+                      SelectableText(
+                          '${tr(c, 'State', 'Estado')}: ${f.preparation.name}'),
+                      const SizedBox(height: 12),
+                      Text(
+                          tr(
+                              c,
+                              'Nutrient observations: ${observations.length}; with a value: ${valued.length}',
+                              'Observações de nutrientes: ${observations.length}; com valor: ${valued.length}'),
+                          style:
+                              Theme.of(dialogContext).textTheme.titleSmall),
+                      if (observations.isEmpty && projectedKeys.isEmpty)
+                        Text(tr(c, 'This record carries no nutrient values.',
+                            'Este registo não contém valores de nutrientes.')),
+                      if (observations.isEmpty)
+                        for (final key in projectedKeys)
+                          SelectableText(_projectedNutrientLine(c, f, key)),
+                      for (final observation in valued)
+                        SelectableText(_observationLine(c, observation)),
+                      for (final observation in unquantified)
+                        SelectableText(_observationLine(c, observation)),
+                      if (unknown.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SelectableText(
+                            '${tr(c, 'Not provided by this source', 'Não fornecido por esta fonte')}: ${unknown.map((o) => nutrientLabel(c, o.nutrient.id)).join(', ')}'),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(tr(
+                          c,
+                          'Missing values are unknown, not zero. This is a source record, not a nutrient reference comparison or an intake assessment.',
+                          'Valores em falta são desconhecidos, não zero. Este é o registo da fonte, não uma comparação com referências nem uma avaliação da ingestão.')),
+                    ])),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(tr(c, 'Close', 'Fechar')))
+            ]));
   }
 
   Future<void> _barcode(BuildContext c) async {
@@ -192,6 +297,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Future<void> _log(BuildContext c, Food food) async {
+    // A food reached from the barcode sheet keeps its capture channel; the entry
+    // snapshot is otherwise identical to a typed search pick.
+    final fromBarcode =
+        barcodeMatches?.any((match) => match.id == food.id) ?? false;
     final day = ref.read(todayDiaryDateProvider);
     final now = ref.read(clockProvider).nowUtc().toLocal();
     final wall = DateTime(day.year, day.month, day.day, now.hour, now.minute);
@@ -232,6 +341,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           LogFoodCommand(
               requestId: ref.read(idGeneratorProvider).next(),
               foodId: food.id,
+              channel: fromBarcode ? EntryChannel.barcode : EntryChannel.search,
               quantity: amount.quantity,
               exactQuantity: amount.exact,
               diaryDate: amount.day,
@@ -275,7 +385,7 @@ class _QuantityDialog extends StatefulWidget {
 
 class _QuantityDialogState extends State<_QuantityDialog> {
   late final TextEditingController text =
-      TextEditingController(text: widget.food.basisValue);
+      TextEditingController(text: widget.food.basisValue.trim());
   late FoodUnit unit = widget.food.basisUnit;
   String? error;
   late final moment = IntakeMomentInput(widget.stamp, widget.day);
@@ -326,7 +436,7 @@ class _QuantityDialogState extends State<_QuantityDialog> {
 
   void submit(BuildContext c, bool saveDraft) {
     try {
-      final value = Exact.parse(text.text.replaceAll(',', '.'));
+      final value = Exact.parse(text.text.trim().replaceAll(',', '.'));
       if (!value.positive) throw ArgumentError();
       final n = value.toDouble();
       final quantity = switch (unit) {
@@ -477,10 +587,19 @@ class _CustomFoodState extends ConsumerState<CustomFoodScreen> {
   Future<void> _save() async {
     setState(() => busy = true);
     try {
-      final b = Exact.parse(basis.text.replaceAll(',', '.'));
+      // The stored basis is the exact decimal text, trimmed: stray whitespace
+      // must not become part of a value that logging parses again later.
+      final basisText = basis.text.trim().replaceAll(',', '.');
+      final b = Exact.parse(basisText);
       if (!b.positive || name.text.trim().isEmpty) {
         throw ArgumentError('Name and positive basis required');
       }
+      final basisAmount = FoodAmount.exact(b, unit,
+          measureId: unit == FoodUnit.item
+              ? 'piece'
+              : unit == FoodUnit.serving
+                  ? 'serving'
+                  : null);
       final id = ref.read(idGeneratorProvider).next();
       final observations = <NutrientObservation>[];
       for (final entry in values.entries) {
@@ -493,12 +612,7 @@ class _CustomFoodState extends ConsumerState<CustomFoodScreen> {
                   entry.key == NutrientKey.carbohydrateG
                       ? carbohydrateDefinition
                       : entry.key.wire),
-              basis: FoodAmount.exact(b, unit,
-                  measureId: unit == FoodUnit.item
-                      ? 'piece'
-                      : unit == FoodUnit.serving
-                          ? 'serving'
-                          : null),
+              basis: basisAmount,
               qualifier: n == Exact.zero
                   ? ObservationQualifier.reportedZero
                   : ObservationQualifier.reported,
@@ -514,13 +628,7 @@ class _CustomFoodState extends ConsumerState<CustomFoodScreen> {
         Food(
             id: 'custom:$id',
             name: name.text.trim(),
-            per100g: projectObservations(completed,
-                basis: FoodAmount.exact(b, unit,
-                    measureId: unit == FoodUnit.item
-                        ? 'piece'
-                        : unit == FoodUnit.serving
-                            ? 'serving'
-                            : null)),
+            per100g: projectObservations(completed, basis: basisAmount),
             observations: completed,
             barcodes: barcode.text.trim().isEmpty
                 ? []
@@ -535,7 +643,7 @@ class _CustomFoodState extends ConsumerState<CustomFoodScreen> {
                 datasetId: id,
                 datasetVersion: '1'),
             basisUnit: unit,
-            basisValue: basis.text.replaceAll(',', '.'),
+            basisValue: basisText,
             quality: DataQuality.userEntered,
             preparation: preparation,
             allergens: allergens.text.trim().isEmpty
@@ -551,5 +659,101 @@ class _CustomFoodState extends ConsumerState<CustomFoodScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+}
+
+/// Exact source amounts are not re-rounded through the shortest double string.
+String _exactAmountLabel(Exact value) {
+  var text = value.toDouble().toStringAsFixed(3);
+  text = text.replaceFirst(RegExp(r'0+$'), '');
+  text = text.replaceFirst(RegExp(r'\.$'), '');
+  return text.isEmpty ? '0' : text;
+}
+
+/// One retained observation as a readable line, preserving its qualifier and
+/// any source definition that differs from the canonical nutrient identity.
+String _observationLine(BuildContext c, NutrientObservation observation) {
+  final label = nutrientLabel(c, observation.nutrient.id);
+  final definition = observation.nutrient.definition == observation.nutrient.id
+      ? ''
+      : ' [${observation.nutrient.definition}]';
+  final state = switch (observation.qualifier) {
+    ObservationQualifier.estimated => tr(c, ' (estimated)', ' (estimado)'),
+    ObservationQualifier.trace => tr(c, ' (trace)', ' (vestígios)'),
+    ObservationQualifier.belowDetection =>
+      tr(c, ' (below detection)', ' (abaixo do limite)'),
+    ObservationQualifier.reported ||
+    ObservationQualifier.reportedZero ||
+    ObservationQualifier.unknown =>
+      '',
+  };
+  final amount = observation.amount;
+  if (amount == null) return '$label$state$definition';
+  return '$label: ${_exactAmountLabel(amount)} '
+      '${observation.nutrient.unit}$state$definition';
+}
+
+/// Fallback line for a record that stores only its legacy per-100 g profile.
+String _projectedNutrientLine(BuildContext c, Food food, NutrientKey key) {
+  final value = food.per100g[key];
+  final amount = value.exactValue;
+  final state = value is NutrientEstimated
+      ? tr(c, ' (estimated)', ' (estimado)')
+      : value is NutrientTrace
+          ? tr(c, ' (trace)', ' (vestígios)')
+          : '';
+  if (amount == null) return nutrientLabel(c, key.wire);
+  return '${nutrientLabel(c, key.wire)}: ${_exactAmountLabel(amount)} '
+      '${key.unit}$state';
+}
+
+/// Source attribution and built-in catalogue status under local search.
+///
+/// The source's required citation is shown wherever its records appear; the
+/// family-test disclosure makes clear that bundling the workbook is not a
+/// redistributable licence or a review of its content. A startup failure is
+/// shown here instead of silently leaving search empty.
+class _CatalogueNotice extends ConsumerWidget {
+  const _CatalogueNotice();
+
+  @override
+  Widget build(BuildContext c, WidgetRef ref) {
+    final catalogue = ref.watch(catalogueProvisioningProvider);
+    // Outside the real composition root (tests, isolated previews) there is no
+    // startup outcome; skip the manifest read entirely rather than opening a
+    // database future for a footer that cannot show a provisioning result.
+    if (catalogue == null) return const SizedBox.shrink();
+    final failure = catalogue.failure;
+    final manifests = ref.watch(installedCataloguesProvider).asData?.value ??
+        const <InstalledCatalogueManifest>[];
+    final attributed = [
+      for (final manifest in manifests)
+        if (manifest.attribution.trim().isNotEmpty) manifest
+    ];
+    final hasInsa = attributed
+        .any((manifest) => manifest.dataset == InsaBdcaWorkbookAdapter.dataset);
+    if (failure == null && attributed.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(c);
+    final style = theme.textTheme.bodySmall;
+    return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (failure != null) ...[
+            Text(
+                tr(c,
+                    'Built-in INSA catalogue unavailable. Your own foods and diary are unchanged.',
+                    'Catálogo INSA integrado indisponível. Os teus alimentos e diário não foram alterados.'),
+                style: style?.copyWith(color: theme.colorScheme.error)),
+            SelectableText('$failure', style: style),
+          ],
+          for (final manifest in attributed)
+            SelectableText(manifest.attribution, style: style),
+          if (hasInsa)
+            Text(
+                tr(c,
+                    'The INSA BDCA workbook is bundled only for this private family-testing build. Its inclusion is not a redistributable licence and does not constitute a review of the data.',
+                    'O livro BDCA do INSA está integrado apenas para este build privado de teste familiar. A inclusão não é uma licença de redistribuição nem constitui uma revisão dos dados.'),
+                style: style),
+        ]));
   }
 }

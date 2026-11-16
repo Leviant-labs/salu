@@ -1,10 +1,11 @@
 # Contract reconciliation and implementation limits
 
-The attached corrected nutrition v2 governs calculation semantics. Attached product
-v2 remains the product contract; the nutrition file's mention of app-spec v3 does
-not establish that an unseen v3 contract exists. The supplied documents are byte-identical to the checked-out repository
-contracts. They remain unchanged in docs; this decision records implementation
-interpretations and outstanding work.
+The attached corrected nutrition v2 and product v2 were the original inputs to
+this decision. They were byte-identical to the checked-out contracts at handoff;
+that is a historical observation, not a claim about the current documents. The
+nutrition and product specifications have since been revised, including the
+assistant boundary and explicit ownership in their respective §1.1 and §2.1.
+Refer to the current specifications and release ledger for their present status.
 
 Native nutrition basis is now recorded for g/ml/item/serving. The legacy per100g
 property/column name is retained for compatibility; its actual basis is in
@@ -37,11 +38,10 @@ feature-specific commands. The present UI still composes several operations in
 app code. More typed commands and transaction-wide validation are needed before
 opening those operations to provider-generated requests.
 
-No approved eligibility/target policy or adaptive estimator is bundled. No
-formula, calorie-floor policy or clinical threshold is invented to fill that gap.
-Automatic targets return POLICY_NOT_APPROVED and adaptation remains disabled.
+No autonomous adaptation estimator is bundled. Starting estimates use the exact
+Mifflin-St Jeor formula with explicit profile inputs and documented assumptions.
 Local coaching currently covers declared safety needs, record completeness and
-holding course. Other rule families require versioned reviewed rules and UI.
+holding course. Other rule families require versioned rules and UI.
 
 The release ledger must retain these gaps. Passing automated checks or producing
 a debug APK does not close the specified product release.

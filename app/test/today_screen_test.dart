@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:salu/src/features/today/today_screen.dart';
+import 'package:salu/src/features/today/diary_screen.dart';
 import 'package:salu/src/providers.dart';
 import 'package:salu_core/salu_core.dart';
 
@@ -50,6 +50,7 @@ LoggedEntry _chickenEntry() => LoggedEntry(
           nutrients: NutrientProfile({
             NutrientKey.energyKcal: NutrientMeasured(247.5),
             NutrientKey.proteinG: NutrientMeasured(46.5),
+            NutrientKey.sugarsG: NutrientMeasured(7),
           }),
           foodId: 'food-chicken',
         ),
@@ -66,7 +67,7 @@ Future<void> _pumpToday(WidgetTester tester, List<LoggedEntry> entries) async {
           _FakeEntryRepository(entries),
         ),
       ],
-      child: const MaterialApp(home: Scaffold(body: TodayScreen())),
+      child: const MaterialApp(home: Scaffold(body: DiaryScreen())),
     ),
   );
   await tester.pump();
@@ -99,5 +100,14 @@ void main() {
     // claim 0 g; protein is known and keeps its number.
     expect(find.text('-- g'), findsNWidgets(3));
     expect(find.text('46.5 g'), findsOneWidget);
+  });
+  testWidgets('additional nutrients show recorded values and unknowns',
+      (tester) async {
+    await _pumpToday(tester, [_chickenEntry()]);
+    await tester.tap(find.text('More nutrients'));
+    await tester.pumpAndSettle();
+    expect(find.text('Total sugars'), findsOneWidget);
+    expect(find.text('7 g'), findsOneWidget);
+    expect(find.text('-- µg'), findsWidgets);
   });
 }

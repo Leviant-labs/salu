@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:drift/drift.dart';
 import 'package:salu_core/salu_core.dart';
 import 'document_validation.dart';
 import 'database/app_database.dart';
@@ -139,10 +140,67 @@ final class ArchiveService {
         }
       }
     }
+    // Cross-plan stock and meal-link validation after all rows exist: an
+    // allocation may be planned in only one document, and every consumed
+    // link must reference an existing entry and a real planned slot.
+    final planDocs = await _documents(target, 'plan');
+    final seenAllocations = <(String, String)>{};
+    for (final doc in planDocs) {
+      final meals = doc['meals'];
+      if (meals is! List) throw const FormatException('Invalid plan meals');
+      for (final raw in meals) {
+        final meal = Map<String, Object?>.from(raw as Map);
+        final useData = meal['batchUse'];
+        if (useData is Map) {
+          final key = (useData['batchId']! as String, useData['allocationId']! as String);
+          if (!seenAllocations.add(key)) {
+            throw const FormatException('Duplicate batch allocation across plans');
+          }
+        }
+      }
+    }
+    final entryIds = {
+      for (final row in (await target.customSelect('SELECT id FROM log_entries').get()))
+        row.read<String>('id')
+    };
+    final plannedSlots = <String>{
+      for (final doc in planDocs)
+        for (final raw in (doc['meals']! as List))
+          '${doc['id']}|${(raw as Map)['slot']}',
+    };
+    for (final doc in await _documents(target, 'plan-meal-state-v1')) {
+      validateUserDocument('plan-meal-state-v1', doc);
+      final key = '${doc['planDocumentId']}|${doc['slotId']}';
+      if (!plannedSlots.contains(key)) {
+        throw const FormatException('Meal state references unknown plan slot');
+      }
+      if (doc['state'] == 'consumed' && !entryIds.contains(doc['entryId'])) {
+        throw const FormatException('Meal state references unknown entry');
+      }
+    }
     if ((await target.customSelect('PRAGMA foreign_key_check').get())
         .isNotEmpty) {
       throw const FormatException('Broken references');
     }
+  }
+
+  static Future<List<Map<String, Object?>>> _documents(
+      AppDatabase target, String collection) async {
+    final rows = await target
+        .customSelect(
+            'SELECT id, payload FROM user_documents WHERE collection = ?',
+            variables: [
+              Variable.withString(collection),
+            ])
+        .get();
+    return [
+      for (final row in rows)
+        {
+          'id': row.read<String>('id'),
+          ...Map<String, Object?>.from(
+              jsonDecode(row.read<String>('payload')) as Map),
+        }
+    ];
   }
 
   /// Replace only after full staging validation. All live changes are atomic.

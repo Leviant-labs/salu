@@ -3,17 +3,19 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/src/features/search/search_screen.dart';
-import 'package:salu/src/features/today/today_screen.dart';
+import 'package:salu/src/features/today/diary_screen.dart';
 import 'package:salu/src/providers.dart';
 import 'package:salu/src/ui_support.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
+import 'support/chatgpt_http_fixture.dart';
 
 Future<void> pump(WidgetTester t, AppDatabase db, Widget child,
     {bool pt = false, bool support = false, double scale = 1}) async {
   await t.pumpWidget(ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(db),
+        secureTokenStoreProvider.overrideWithValue(FakeTokenStore()),
         initialSettingsProvider.overrideWithValue({
           'language': pt ? 'pt' : 'en',
           'support': support,
@@ -31,6 +33,18 @@ Future<void> pump(WidgetTester t, AppDatabase db, Widget child,
           home: Scaffold(body: child))));
   await t.pumpAndSettle();
 }
+Future<void> scrollCheckInTo(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(
+    target,
+    200,
+    scrollable: find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(Scrollable),
+    ).last,
+  );
+  await tester.pumpAndSettle();
+}
+
 
 void main() {
   testWidgets('check-in shows recorded fibre coverage without adequacy claims',
@@ -58,10 +72,12 @@ void main() {
               grams: 10,
               nutrients: const NutrientProfile.empty()),
         ]));
-    await pump(t, db, const TodayScreen());
+    await pump(t, db, const DiaryScreen());
     await t.ensureVisible(find.text('Weekly check-in'));
     await t.tap(find.text('Weekly check-in'));
     await t.pumpAndSettle();
+    await scrollCheckInTo(
+        t, find.textContaining('1 reported, 0 estimated, 0 trace, 1 unknown'));
     expect(find.textContaining('1 reported, 0 estimated, 0 trace, 1 unknown'),
         findsOneWidget);
     expect(find.textContaining('does not assess adequacy'), findsOneWidget);
@@ -71,14 +87,15 @@ void main() {
       (t) async {
     final db = AppDatabase.memory();
     addTearDown(db.close);
-    await pump(t, db, const TodayScreen());
+    await pump(t, db, const DiaryScreen());
     await t.ensureVisible(find.text('Weekly check-in'));
     await t.tap(find.text('Weekly check-in'));
     await t.pumpAndSettle();
-    expect(
-        find.textContaining('7 incomplete or not declared.'), findsOneWidget);
     expect(find.textContaining('Missing days are never counted as zero.'),
         findsOneWidget);
+    await scrollCheckInTo(t, find.textContaining('7 incomplete or not declared.'));
+    expect(
+        find.textContaining('7 incomplete or not declared.'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
   testWidgets('check-in describes observed weight without attributing a cause',
@@ -103,10 +120,12 @@ void main() {
             'offsetMinutes': item.at.timeZoneOffset.inMinutes
           });
     }
-    await pump(t, db, const TodayScreen());
+    await pump(t, db, const DiaryScreen());
     await t.ensureVisible(find.text('Weekly check-in'));
     await t.tap(find.text('Weekly check-in'));
     await t.pumpAndSettle();
+    await scrollCheckInTo(
+        t, find.textContaining('last recorded weight in this window is lower'));
     expect(find.textContaining('last recorded weight in this window is lower'),
         findsOneWidget);
     expect(find.textContaining('does not measure fat change'), findsOneWidget);
@@ -144,7 +163,7 @@ void main() {
       (t) async {
     final db = AppDatabase.memory();
     addTearDown(db.close);
-    await pump(t, db, const TodayScreen(), pt: true, support: true, scale: 2);
+    await pump(t, db, const DiaryScreen(), pt: true, support: true, scale: 2);
     expect(find.text('Ainda não há registos'), findsOneWidget);
     expect(find.text('Nutrição registada'), findsNothing);
     expect(find.text('Registar peso'), findsNothing);
@@ -154,7 +173,7 @@ void main() {
       (t) async {
     final db = AppDatabase.memory();
     addTearDown(db.close);
-    await pump(t, db, const TodayScreen());
+    await pump(t, db, const DiaryScreen());
     expect(find.text('-- kcal'), findsOneWidget);
     expect(find.text('0 kcal'), findsNothing);
   });

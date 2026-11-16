@@ -22,6 +22,8 @@ void main() {
         SetFavoriteFoodCommand(requestId: 'fav', foodId: 'apple', favorite: true));
     expect(await container.read(favoriteFoodsProvider.future), hasLength(1));
     await tester.scrollUntilVisible(find.text('Delete local data'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Delete local data'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Confirm'));

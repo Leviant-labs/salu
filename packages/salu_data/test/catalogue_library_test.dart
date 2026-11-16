@@ -378,9 +378,26 @@ void main() {
         isNot(contains('details_json')));
     raw.execute(
         "INSERT INTO catalog_foods(id,name,source,source_id,per100g_json,quality,preparation,imported_at) VALUES('old','Maçã','legacy','old','{}','imported','raw',0)");
+    raw.execute(
+        "INSERT INTO log_entries(id,request_id,diary_date,instant_utc_ms,offset_minutes,channel,recorded_at_ms,revision,note) VALUES('v2-entry','v2-request','2025-10-26',1761440400000,60,'manual',1761440400000,2,'preserve')");
+    raw.execute(
+        "INSERT INTO log_entry_items(id,entry_id,food_id,name,grams,nutrients_json,position,quantity_json,source_json) VALUES('v2-item','v2-entry','old','Maçã',125,'{}',0,'{\"value\":\"125\",\"unit\":\"g\"}','{\"dataset\":\"legacy\"}')");
+    raw.execute(
+        "INSERT INTO user_documents(collection,id,revision,payload) VALUES('preferences','app',3,'{\"language\":\"pt-PT\"}')");
+    raw.execute(
+        "INSERT INTO applied_commands(request_id,result_json) VALUES('v2-receipt','{\"revision\":3}')");
     raw.execute('PRAGMA user_version=2');
     final before = Map<String, Object?>.from(
         raw.select('SELECT * FROM catalog_foods').single);
+    final preserved = <String, Map<String, Object?>>{
+      for (final table in [
+        'log_entries',
+        'log_entry_items',
+        'user_documents',
+        'applied_commands'
+      ])
+        table: Map<String, Object?>.from(raw.select('SELECT * FROM $table').single)
+    };
     final upgraded = AppDatabase(NativeDatabase.opened(raw));
     try {
       final after = (await upgraded
@@ -389,6 +406,10 @@ void main() {
           .data;
       for (final key in before.keys) {
         expect(after[key], before[key]);
+      }
+      for (final table in preserved.keys) {
+        final row = (await upgraded.customSelect('SELECT * FROM $table').getSingle()).data;
+        expect(row, preserved[table], reason: 'v2 $table');
       }
       expect((await DriftFoodRepository(upgraded).search('maca')).single.id,
           'old');

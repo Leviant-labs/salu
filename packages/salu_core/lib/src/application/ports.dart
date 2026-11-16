@@ -48,3 +48,10 @@ abstract interface class EntryRepository {
   /// All entries assigned to [date], oldest first.
   Future<List<LoggedEntry>> entriesFor(DiaryDate date);
 }
+
+/// Durable idempotency for recipe logs with explicitly assigned time or date.
+/// Implementations atomically commit the receipt with the entry.
+abstract interface class RecipeLogReceiptRepository {
+  Future<LoggedEntry?> replayRecipeLog(String requestId, String? fingerprint);
+  Future<LoggedEntry> appendRecipeLog(LoggedEntry entry, String fingerprint);
+}

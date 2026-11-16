@@ -58,10 +58,7 @@ void main() {
       draftRevision: 1,
       expiresAt: now.add(const Duration(minutes: 1)));
   const authorized = ProviderAuthorization(
-      providerId: 'fake',
-      termsReviewed: true,
-      distributionEligible: true,
-      transportSupported: true);
+      providerId: 'fake', connected: true, planUsageGranted: true);
   Future<InferenceResponse> send(FakeProvider p, TransferConsent c,
           {ProviderAuthorization auth = authorized}) =>
       const ReviewedInferenceService().request(
@@ -71,7 +68,7 @@ void main() {
           draft: MealDraft(id: 'd'),
           consent: c,
           now: now);
-  test('provider release gate fails before transport', () async {
+  test('disconnected provider fails before transport', () async {
     final p = FakeProvider();
     await expectLater(
         send(p, consent(),

@@ -22,3 +22,36 @@ from the developer's Dart on PATH; verify it when starting a new client.
 Flutter's SDK startup can probe Azure instance metadata while detecting CI. In
 this environment CI=true short-circuits that probe (verified in bot_detector.dart).
 All subsequent Flutter commands used CI=true and suppressed analytics.
+
+## Guided experience
+
+Startup installs the pinned INSA catalogue followed by the authored starter-meal
+asset. A missing source binding must fail that library transaction, never select
+development nutrition. Existing user records remain accessible. Guided setup
+stores unfinished answers separately from the committed profile; accepting the
+review writes the profile, optional estimate, week and grocery overlays atomically.
+Week documents use `plan/week:<startDate>`; `plan/current` remains real legacy data.
+
+Focused checks:
+
+```sh
+cd packages/salu_core
+dart test test/starting_estimate_test.dart test/guided_planner_test.dart test/plan_assistance_test.dart test/daily_recommendation_test.dart
+cd ../salu_data
+dart test test/starter_meal_library_test.dart test/guided_plan_service_test.dart test/plan_meal_state_test.dart
+cd ../../app
+flutter test test/starter_meals_source_test.dart test/onboarding_plan_test.dart test/guided_today_test.dart test/chatgpt_auth_test.dart test/chatgpt_plan_provider_test.dart
+```
+
+On the configured Windows workstation, prepend `C:/temp/flutter/bin` to PATH
+or invoke its `dart.bat`/`flutter.bat` directly, with `CI=true`. Run the existing
+`bash tool/verify.sh` from the repository root for boundary and full-suite checks.
+
+ChatGPT fixtures must use injected HTTP/token-store/browser seams and test signing
+keys, never personal credentials. Unit tests do not prove mobile browser return,
+secure storage or subscription admission. Physical Android and iPhone acceptance
+requires the documented loopback callback, background/resume/cancel/reconnect,
+a server-ordered model catalogue and one **completed live Responses inference**.
+Windows cannot certify the iPhone path; an Android emulator is not physical-device
+proof. Keep unavailable platform/provider evidence explicit rather than adding an
+API-key, desktop-companion or private-endpoint fallback.

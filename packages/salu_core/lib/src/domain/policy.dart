@@ -1,5 +1,6 @@
+import 'health_declarations.dart';
 import 'nutrition_contract.dart';
-
+import 'nutrition_profile.dart';
 /// Declarations are not assessments; null never certifies eligibility.
 final class SafetyProfile {
   const SafetyProfile(
@@ -46,17 +47,11 @@ final class EligibilityDecision {
       {required this.reasonCodes,
       required this.supportMode,
       required this.personalReferences,
-      required this.declaredTargetPlanning,
       required this.seekAdvice});
   static const policyVersion = 'eligibility-draft-v2-unapproved';
   final List<String> reasonCodes;
-  final bool supportMode,
-      personalReferences,
-      declaredTargetPlanning,
-      seekAdvice;
+  final bool supportMode, personalReferences, seekAdvice;
   bool get recordingAllowed => true;
-  bool get automaticTargetsAllowed => false;
-  bool get adaptiveProposalsAllowed => false;
 }
 
 final class EligibilityService {
@@ -79,7 +74,6 @@ final class EligibilityService {
         p.relevantMedication
       ].any((v) => v == null))
         'DECLARATIONS_INCOMPLETE',
-      'POLICY_NOT_APPROVED',
     ];
     final routed = p.adult != true ||
         p.pregnant != false ||
@@ -92,7 +86,6 @@ final class EligibilityService {
         reasonCodes: List.unmodifiable(reasons),
         supportMode: p.eatingConcern == true,
         personalReferences: !routed,
-        declaredTargetPlanning: !routed,
         seekAdvice: p.symptoms ||
             p.clinicalNeed == true ||
             p.eatingConcern == true ||
@@ -100,7 +93,21 @@ final class EligibilityService {
   }
 }
 
-enum TargetOrigin { userDeclared, clinicianProvided, reviewedPolicyGenerated }
+enum TargetOrigin { userDeclared, clinicianProvided, calculatedEstimate }
+
+/// Typed failure for starting-estimate calculation.
+///
+/// `TARGET_INPUT_REQUIRED` carries the exact [NutritionProfile] field names
+/// the caller must ask for; nothing here is inferred. `TARGET_CONFLICT`
+/// means the complete inputs cannot produce a usable target.
+final class TargetEstimateException implements Exception {
+  TargetEstimateException(this.code, {this.missingInputs = const []});
+  final String code;
+  final List<String> missingInputs;
+  @override
+  String toString() =>
+      'TargetEstimateException($code, missingInputs: $missingInputs)';
+}
 
 final class DeclaredTarget {
   DeclaredTarget(
@@ -113,6 +120,8 @@ final class DeclaredTarget {
       this.proteinG,
       this.fatG,
       this.carbohydrateG,
+      this.formulaVersion,
+      this.assumptions,
       this.active = true}) {
     if (id.isEmpty ||
         revision < 1 ||
@@ -120,9 +129,6 @@ final class DeclaredTarget {
         [proteinG, fatG, carbohydrateG]
             .any((x) => x != null && x.compareTo(Exact.zero) < 0)) {
       throw ArgumentError('Invalid target');
-    }
-    if (origin == TargetOrigin.reviewedPolicyGenerated) {
-      throw StateError('POLICY_NOT_APPROVED');
     }
     final macroEnergy = (proteinG ?? Exact.zero) * Exact.parse('4') +
         (fatG ?? Exact.zero) * Exact.parse('9') +
@@ -132,6 +138,8 @@ final class DeclaredTarget {
     }
   }
   final String id, effectiveDate, policyVersion;
+  final String? formulaVersion;
+  final Map<String, Object?>? assumptions;
   final int revision;
   final TargetOrigin origin;
   final Exact energyKcal;
@@ -147,12 +155,18 @@ final class DeclaredTarget {
         'proteinG': proteinG?.toJson(),
         'fatG': fatG?.toJson(),
         'carbohydrateG': carbohydrateG?.toJson(),
+        if (formulaVersion != null) 'formulaVersion': formulaVersion,
+        if (assumptions != null) 'assumptions': assumptions,
         'active': active
       };
   factory DeclaredTarget.fromJson(Map<String, Object?> j) {
     Exact? amount(String key) => j[key] == null
         ? null
         : Exact.fromJson(Map<String, Object?>.from(j[key]! as Map));
+    Map<String, Object?>? provenance(String key) =>
+        j[key] == null
+            ? null
+            : Map<String, Object?>.from(j[key]! as Map);
     return DeclaredTarget(
         id: j['id']! as String,
         revision: j['revision']! as int,
@@ -163,14 +177,98 @@ final class DeclaredTarget {
         proteinG: amount('proteinG'),
         fatG: amount('fatG'),
         carbohydrateG: amount('carbohydrateG'),
+        formulaVersion: j['formulaVersion'] as String?,
+        assumptions: provenance('assumptions'),
         active: j['active'] == true);
   }
 }
 
 final class TargetService {
   const TargetService();
-  String generateAutomaticTarget() => 'POLICY_NOT_APPROVED';
-  String proposeAdaptation() => 'ADAPTATION_NOT_APPROVED';
+  static const startingEstimatePolicyVersion = 'starting-estimate-v1';
+  static const formulaVersion = 'mifflin-st-jeor-v1';
+
+  /// Exact Mifflin-St Jeor starting estimate.
+  ///
+  /// `RMR = 10*weightKg + 6.25*heightCm - 5*ageYears + equationConstant`,
+  /// maintenance is `RMR * activityPal` (no exercise add-back), goal
+  /// multipliers are lose `0.90`, maintain/notDeclared `1.00`, gain `1.05`.
+  /// Protein is `max(0.83*weightKg, 0.15*energy/4)`, fat is `0.30*energy/9`,
+  /// carbohydrate is `(energy - 4*protein - 9*fat - 50)/4` with the 50-kcal
+  /// fibre allocation kept explicit. Non-positive energy or negative
+  /// carbohydrate throws `TARGET_CONFLICT`; missing inputs throw
+  /// `TARGET_INPUT_REQUIRED` with exact profile field names.
+  DeclaredTarget generateAutomaticTarget(
+      {required NutritionProfile profile,
+      required String id,
+      required int revision,
+      required String effectiveDate}) {
+    final missing = <String>[
+      if (profile.ageYears == null) 'ageYears',
+      if (profile.heightCm == null) 'heightCm',
+      if (profile.weightKg == null) 'weightKg',
+      if (profile.equationConstant == null) 'equationConstant',
+      if (profile.activityPal == null) 'activityPal',
+    ];
+    if (missing.isNotEmpty) {
+      throw TargetEstimateException('TARGET_INPUT_REQUIRED',
+          missingInputs: List.unmodifiable(missing));
+    }
+    final age = profile.ageYears!;
+    final height = profile.heightCm!;
+    final weight = profile.weightKg!;
+    final constant = Exact.parse('${profile.equationConstant!}');
+    final pal = profile.activityPal!;
+    final rmr = Exact.parse('10') * weight +
+        Exact.parse('6.25') * height -
+        Exact.parse('5') * Exact.parse('$age') +
+        constant;
+    final maintenance = rmr * pal;
+    final multiplier = switch (profile.goal) {
+      AdultGoal.loseWeight => Exact.parse('0.90'),
+      AdultGoal.maintainWeight => Exact.parse('1.00'),
+      AdultGoal.gainWeight => Exact.parse('1.05'),
+      AdultGoal.notDeclared => Exact.parse('1.00'),
+    };
+    final energy = maintenance * multiplier;
+    if (!energy.positive) {
+      throw TargetEstimateException('TARGET_CONFLICT');
+    }
+    final perKg = Exact.parse('0.83') * weight;
+    final share = Exact.parse('0.15') * energy / Exact.parse('4');
+    final protein = perKg.compareTo(share) >= 0 ? perKg : share;
+    final fat = Exact.parse('0.30') * energy / Exact.parse('9');
+    final carbohydrate = (energy -
+            Exact.parse('4') * protein -
+            Exact.parse('9') * fat -
+            Exact.parse('50')) /
+        Exact.parse('4');
+    if (carbohydrate.compareTo(Exact.zero) < 0) {
+      throw TargetEstimateException('TARGET_CONFLICT');
+    }
+    return DeclaredTarget(
+        id: id,
+        revision: revision,
+        origin: TargetOrigin.calculatedEstimate,
+        effectiveDate: effectiveDate,
+        policyVersion: startingEstimatePolicyVersion,
+        formulaVersion: formulaVersion,
+        assumptions: {
+          'ageYears': age,
+          'heightCm': height.toJson(),
+          'weightKg': weight.toJson(),
+          'equationConstant': profile.equationConstant,
+          'activityPal': pal.toJson(),
+          'goalMultiplier': multiplier.toJson(),
+          'fibreAllocationKcal': Exact.parse('50').toJson(),
+          'isEstimate': true,
+        },
+        energyKcal: energy,
+        proteinG: protein,
+        fatG: fat,
+        carbohydrateG: carbohydrate,
+        active: true);
+  }
 
   /// Changing targets always produces a new owned revision. No exercise add-back.
   DeclaredTarget revise(DeclaredTarget previous, DeclaredTarget next,

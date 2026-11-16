@@ -16,6 +16,8 @@ void main() {
     raw.execute(
         'CREATE TABLE log_entry_items(id TEXT PRIMARY KEY NOT NULL,entry_id TEXT NOT NULL REFERENCES log_entries(id) ON DELETE CASCADE,food_id TEXT,name TEXT NOT NULL,grams REAL NOT NULL,nutrients_json TEXT NOT NULL,position INTEGER NOT NULL)');
     raw.execute(
+        "INSERT INTO catalog_foods(id,name,source,source_id,source_version,per100g_json,portion_grams,density_g_per_ml,quality,preparation,imported_at) VALUES('apple','Maçã','legacy','source-1','2024','{\"protein_g\":{\"state\":\"measured\",\"value\":1}}',120.5,0.75,'imported','raw',1234)");
+    raw.execute(
         "INSERT INTO log_entries VALUES ('e','request','2025-03-30',1743296400000,60,'manual',1743296400000,1,'DST history')");
     raw.execute('INSERT INTO log_entry_items VALUES (?,?,?,?,?,?,?)', [
       'i',
@@ -29,6 +31,10 @@ void main() {
     raw.execute('PRAGMA user_version=1');
     final before = Map<String, Object?>.from(
         raw.select('SELECT * FROM log_entry_items').single);
+    final foodBefore = Map<String, Object?>.from(
+        raw.select('SELECT * FROM catalog_foods').single);
+    final entryBefore = Map<String, Object?>.from(
+        raw.select('SELECT * FROM log_entries').single);
     final db = AppDatabase(NativeDatabase.opened(raw));
     try {
       final after =
@@ -36,6 +42,16 @@ void main() {
               .data;
       for (final key in before.keys) {
         expect(after[key], before[key]);
+      }
+      final foodAfter =
+          (await db.customSelect('SELECT * FROM catalog_foods').getSingle()).data;
+      final entryAfter =
+          (await db.customSelect('SELECT * FROM log_entries').getSingle()).data;
+      for (final key in foodBefore.keys) {
+        expect(foodAfter[key], foodBefore[key], reason: key);
+      }
+      for (final key in entryBefore.keys) {
+        expect(entryAfter[key], entryBefore[key], reason: key);
       }
       final entry =
           (await DriftEntryRepository(db).findByRequestId('request'))!;

@@ -59,7 +59,16 @@ Map<String, Object?> recipeSnapshot(RecipeVersion r) => {
       'dietaryTags': r.dietaryTags.toList(),
       'ingredients': [
         for (final i in r.ingredients)
-          {'food': foodSnapshot(i.food), 'grams': i.grams.toJson()}
+          {
+            'food': foodSnapshot(i.food),
+            'grams': i.grams.toJson(),
+            // Optional declaration keys are omitted entirely when absent so
+            // legacy snapshots and historical receipts replay byte-equivalently.
+            if (i.declaredAllergens != null) ...{
+              'declaredAllergens': (i.declaredAllergens!.toList()..sort()),
+              'allergenDeclarationSource': i.allergenDeclarationSource,
+            },
+          }
       ]
     };
 RecipeVersion recipeFromSnapshot(Map<String, Object?> j) => RecipeVersion(
@@ -77,7 +86,11 @@ RecipeVersion recipeFromSnapshot(Map<String, Object?> j) => RecipeVersion(
                 foodFromSnapshot(
                     Map<String, Object?>.from((value as Map)['food'] as Map)),
                 Exact.fromJson(
-                    Map<String, Object?>.from(value['grams'] as Map)))
+                    Map<String, Object?>.from(value['grams'] as Map)),
+                declaredAllergens:
+                    (value['declaredAllergens'] as List?)?.cast<String>().toSet(),
+                allergenDeclarationSource:
+                    value['allergenDeclarationSource'] as String?)
         ]);
 
 Map<String, Object?> loggedItemSnapshot(LoggedItem i) => {

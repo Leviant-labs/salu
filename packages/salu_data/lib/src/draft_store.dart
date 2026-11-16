@@ -76,8 +76,9 @@ final class MealDraftStore {
       final draft = _decode(row);
       if (draft.status == DraftStatus.committed &&
           row.data['confirmationRequestId'] == requestId &&
-          draft.revision == expectedRevision + 1 &&
           reviewed) {
+        // The request id identifies the confirmation that was already applied,
+        // so a retry after a refreshed revision still replays without writing.
         return draft;
       }
       if (draft.revision != expectedRevision) throw StateError('STALE_DRAFT');

@@ -6,6 +6,7 @@
 library;
 
 import '../domain/entry.dart';
+import '../domain/food_amount.dart';
 import '../domain/nutrition_contract.dart';
 import '../domain/quantity.dart';
 import '../domain/time.dart';
@@ -184,41 +185,9 @@ final class LogFoodHandler {
           PieceQuantity() =>
             FoodAmount(q.count.toString(), FoodUnit.item, measureId: 'piece'),
         };
-    final resolution = resolveQuantity(q, food.portions);
-    final double? grams = resolution is ResolvedMass ? resolution.grams : null;
-    final conversions = <QuantityConversion>[
-      if (food.portions.densityGramsPerMillilitre != null &&
-          food.portions.densityGramsPerMillilitre!.isFinite &&
-          food.portions.densityGramsPerMillilitre! > 0)
-        QuantityConversion(
-            from: FoodAmount('1', FoodUnit.ml),
-            to: FoodAmount(
-                food.portions.densityGramsPerMillilitre.toString(), FoodUnit.g),
-            source: 'food-density'),
-      if (food.portions.portionGrams != null &&
-          food.portions.portionGrams!.isFinite &&
-          food.portions.portionGrams! > 0) ...[
-        QuantityConversion(
-            from: FoodAmount('1', FoodUnit.item, measureId: 'piece'),
-            to: FoodAmount(food.portions.portionGrams.toString(), FoodUnit.g),
-            source: 'food-portion'),
-        QuantityConversion(
-            from: FoodAmount('1', FoodUnit.serving, measureId: 'serving'),
-            to: FoodAmount(food.portions.portionGrams.toString(), FoodUnit.g),
-            source: 'food-serving'),
-      ],
-    ];
-    Exact factor;
+    final ResolvedFoodAmount resolved;
     try {
-      factor = quantityRatio(
-          native,
-          FoodAmount(food.basisValue, food.basisUnit,
-              measureId: switch (food.basisUnit) {
-                FoodUnit.item => 'piece',
-                FoodUnit.serving => 'serving',
-                _ => null
-              }),
-          conversions);
+      resolved = resolveFoodAmount(food, native);
     } on StateError {
       return const LogFoodRejected(LogFoodRejection.unresolvableQuantity,
           'No compatible food-specific conversion. Enter a mass for a mass-based food, the label basis quantity, or add a recorded conversion.');
@@ -239,8 +208,8 @@ final class LogFoodHandler {
       items: [
         LoggedItem(
           name: food.name,
-          grams: grams,
-          nutrients: food.per100g.scaledExact(factor),
+          grams: resolved.grams,
+          nutrients: food.per100g.scaledExact(resolved.factor),
           quantity: native,
           sourceSnapshot: {
             'dataset': food.source.dataset,

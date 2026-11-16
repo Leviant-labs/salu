@@ -202,19 +202,17 @@ void main() {
     expect(result[NutrientKey.proteinG]!.isComplete, isFalse);
     expect(NutrientSum.noData.recordedValue, isNull);
   });
-  test('safety routes survive empty logs and adaptation remains blocked', () {
+  test('safety routes survive empty logs', () {
     final result = const CoachingService().checkIn(
         const SafetyProfile(
             adult: false, pregnant: true, clinicalNeed: true, symptoms: true),
         []);
     expect(result.safety.recordingAllowed, isTrue);
-    expect(result.safety.automaticTargetsAllowed, isFalse);
     expect(
         result.safety.reasonCodes,
         containsAll(
             ['MINOR', 'PREGNANCY', 'CLINICAL_NUTRITION', 'SYMPTOMS_REVIEW']));
     expect(result.findings.first.action, CoachingAction.seekAdvice);
-    expect(result.adaptationStatus, 'disabled');
     expect(result.findings.any((f) => f.action == CoachingAction.improveData),
         isTrue);
     expect(result.findings.any((f) => f.action == CoachingAction.hold), isFalse);
@@ -223,7 +221,6 @@ void main() {
     final result = const CoachingService().checkIn(const SafetyProfile(), []);
     expect(result.findings.single.action, CoachingAction.improveData);
     expect(result.inputRevisions, isEmpty);
-    expect(result.adaptationStatus, 'disabled');
   });
   test('missing weekends never create a TEE estimate', () {
     final days = List.generate(
@@ -235,7 +232,6 @@ void main() {
                 ? DiaryCompleteness.unknown
                 : DiaryCompleteness.userDeclaredComplete));
     final result = const CoachingService().checkIn(const SafetyProfile(), days);
-    expect(result.adaptationStatus, 'disabled');
     expect(result.findings.any((f) => f.action == CoachingAction.improveData),
         isTrue);
   });
@@ -250,10 +246,20 @@ void main() {
             energyKcal: Exact.parse('100'),
             proteinG: Exact.parse('100')),
         throwsStateError);
-    expect(
-        const TargetService().generateAutomaticTarget(), 'POLICY_NOT_APPROVED');
-    expect(
-        const TargetService().proposeAdaptation(), 'ADAPTATION_NOT_APPROVED');
+    final profile = NutritionProfile(
+        goal: AdultGoal.loseWeight,
+        ageYears: 30,
+        heightCm: Exact.parse('180'),
+        weightKg: Exact.parse('80'),
+        equationConstant: 5,
+        activityPal: Exact.parse('1.6'));
+    final target = const TargetService().generateAutomaticTarget(
+        profile: profile,
+        id: 'current',
+        revision: 1,
+        effectiveDate: '2026-11-08');
+    expect(target.origin, TargetOrigin.calculatedEstimate);
+    expect(target.energyKcal, Exact.parse('2563.2'));
   });
   test('planner repeat allowance of two does not make seven dinners impossible',
       () {
@@ -385,5 +391,28 @@ void main() {
     expect(permits('one', InferenceTask.labelOcr, 2), isFalse);
     consent.revoked = true;
     expect(permits('one', InferenceTask.labelOcr, 1), isFalse);
+  });
+  test('entry correction commands require a valid item selection', () {
+    ReviseEntryCommand command(
+            {int? itemIndex, Exact? multiplier, bool delete = false}) =>
+        ReviseEntryCommand(
+            requestId: 'request',
+            entryId: 'entry',
+            expectedRevision: 1,
+            recordedAt: DateTime.utc(2026),
+            itemIndex: itemIndex,
+            multiplier: multiplier,
+            delete: delete);
+
+    expect(() => command(multiplier: Exact.one), returnsNormally);
+    expect(() => command(itemIndex: 0, multiplier: Exact.one), returnsNormally);
+    // An item index is only meaningful for scaling that one item.
+    expect(() => command(itemIndex: 0), throwsArgumentError);
+    expect(() => command(itemIndex: -1), throwsArgumentError);
+    expect(
+        () => command(itemIndex: 0, multiplier: Exact.zero), throwsArgumentError);
+    expect(
+        () => command(itemIndex: 0, multiplier: Exact.one, delete: true),
+        throwsArgumentError);
   });
 }

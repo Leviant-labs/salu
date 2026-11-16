@@ -3,11 +3,32 @@ import 'package:drift/drift.dart';
 import 'database/app_database.dart';
 import 'document_validation.dart';
 
+/// Positive behaviours that may earn a reward.
+///
+/// Intake, weight and fasting outcomes are deliberately absent: lowering
+/// intake, losing weight faster or fasting longer is never rewarded, and a
+/// missed day can at most decline to add a reward. It never removes or
+/// downgrades one already recorded. `day-review` and `checkin` are the
+/// existing engagement rewards; the others are the behaviours named by the
+/// product contract.
+const rewardEventKinds = {
+  'engagement',
+  'planning',
+  'learning',
+  'return',
+  'day-review',
+  'checkin',
+};
+
 const userCollections = {
   'preferences',
   'favorite-food',
   'saved-meal',
   'profile',
+  'health-declaration',
+  'nutrition-profile-v1',
+  'meal-content-v1',
+  'plan-meal-state-v1',
   'target',
   'recipe',
   'batch',
@@ -35,6 +56,38 @@ final class StoredDocument {
   final Map<String, Object?> data;
 }
 
+/// Rejects new reward events that would reinforce eating restriction or
+/// punishment.
+///
+/// The event id is `<kind>` or `<kind>:<subject>`. [LocalWorkspace.reward]
+/// returns an existing event before calling this, so policy changes never
+/// invalidate history; this only guards events that would create a new row.
+/// A stable id makes a retry resolve to the same stored event. Unknown kinds
+/// are rejected rather than guessed: adding a reward kind is a visible policy
+/// decision.
+void _validateRewardEvent(String eventId) {
+  if (eventId.isEmpty || eventId.trim() != eventId) {
+    throw ArgumentError.value(eventId, 'eventId', 'Invalid reward event');
+  }
+  final separator = eventId.indexOf(':');
+  final kind = separator == -1 ? eventId : eventId.substring(0, separator);
+  final subject = separator == -1 ? null : eventId.substring(separator + 1);
+  if (!rewardEventKinds.contains(kind)) {
+    throw ArgumentError.value(
+        eventId,
+        'eventId',
+        'Rewards are limited to engagement, planning, learning, returning '
+            'after breaks, daily review and check-ins; intake, weight and '
+            'fasting outcomes are never rewarded');
+  }
+  if (subject != null &&
+      (subject.isEmpty ||
+          subject.trim() != subject ||
+          subject.contains(':'))) {
+    throw ArgumentError.value(eventId, 'eventId', 'Invalid reward event');
+  }
+}
+
 final class LocalWorkspace {
   LocalWorkspace(this.db);
   final AppDatabase db;
@@ -58,6 +111,12 @@ final class LocalWorkspace {
           .toList();
 
   /// Optimistic revision check and idempotency share the data transaction.
+  ///
+  /// Reward documents are immutable through this method after creation: a
+  /// fresh reward row is checked against the same allowlist as [reward] and
+  /// must record engagement, while an existing reward row only accepts a
+  /// receipt replay of the request that created it. Use [reward] to record
+  /// events; historical rows remain readable and retryable there.
   Future<int> put(
       {required String requestId,
       required String collection,
@@ -71,6 +130,7 @@ final class LocalWorkspace {
     }
     validateUserDocument(collection, data);
     final payload = jsonEncode(data);
+    final rewardWrite = collection == 'reward';
     return db.transaction(() async {
       final prior = await (db.select(db.appliedCommands)
             ..where((t) => t.requestId.equals(requestId)))
@@ -88,6 +148,24 @@ final class LocalWorkspace {
       final previous = await read(collection, id);
       if ((previous?.revision ?? 0) != expectedRevision) {
         throw StateError('STALE_REVISION');
+      }
+      // Receipt replay above is the only repeated write. Even when the
+      // expected revision matches, an existing reward row cannot be updated:
+      // that would be a non-idempotent rewrite.
+      if (rewardWrite && previous != null) {
+        throw StateError('REWARD_UPDATE_UNSUPPORTED');
+      }
+      // Fresh reward rows must obey the same allowlist as [reward]. Existing
+      // historical rows are never re-validated or rewritten; they remain
+      // readable, restorable and retryable through [reward].
+      if (rewardWrite) {
+        _validateRewardEvent(id);
+        final fresh =
+            Map<String, Object?>.from(jsonDecode(payload) as Map);
+        if (fresh['engagement'] != true) {
+          throw ArgumentError(
+              'A new reward event must record engagement');
+        }
       }
       final revision = expectedRevision + 1;
       await db.into(db.userDocuments).insertOnConflictUpdate(
@@ -114,14 +192,31 @@ final class LocalWorkspace {
         .go();
   }
 
+  /// Records one positive engagement event exactly once.
+  ///
+  /// The event id is the stable idempotency key. An existing event returns its
+  /// revision without a write, even when the kind is no longer in
+  /// [rewardEventKinds], so historical records stay idempotent after a policy
+  /// change or restoration. Only a new event is policy-gated: repeated,
+  /// concurrent and post-restore calls otherwise return the single stored
+  /// event. Rewards are additive and are never deleted or downgraded here, so
+  /// a missed day cannot take one away. Callers keep using the existing
+  /// `planning:<date>`, `day-review:<date>` and `checkin:<date>` ids.
+  /// Throws [ArgumentError] for a malformed or non-positive new event id;
+  /// nothing is written in that case.
   Future<int> reward(String eventId) async {
-    final previous = await read('reward', eventId);
-    if (previous != null) return previous.revision;
-    return put(
-        requestId: 'reward:$eventId',
-        collection: 'reward',
-        id: eventId,
-        expectedRevision: 0,
-        data: {'engagement': true});
+    return db.transaction(() async {
+      final previous = await read('reward', eventId);
+      if (previous != null) return previous.revision;
+      _validateRewardEvent(eventId);
+      return put(
+          requestId: 'reward:$eventId',
+          collection: 'reward',
+          id: eventId,
+          expectedRevision: 0,
+          // Kept byte-identical to historical reward documents so retries from
+          // older builds and restored records still compare idempotently.
+          data: const <String, Object?>{'engagement': true});
+    });
   }
 }

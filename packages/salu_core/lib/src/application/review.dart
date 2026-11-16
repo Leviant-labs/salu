@@ -10,14 +10,36 @@ final class TransferConsent {
       required this.draftId,
       required this.draftRevision,
       required this.expiresAt})
-      : payloadClasses = Set.unmodifiable(payloadClasses);
+      : payloadClasses = Set.unmodifiable(payloadClasses) {
+    if (providerId.isEmpty || requestId.isEmpty || draftId.isEmpty) {
+      throw ArgumentError('Consent requires provider, request and draft ids');
+    }
+    if (draftRevision < 1) {
+      throw ArgumentError('Consent requires an existing draft revision');
+    }
+  }
   final String providerId, requestId, draftId;
   final InferenceTask task;
   final Set<String> payloadClasses;
   final int draftRevision;
   final DateTime expiresAt;
-  bool revoked = false;
-  bool consumed = false;
+  bool _revoked = false;
+  bool _consumed = false;
+
+  /// Withdrawal is permanent: assigning `false` after withdrawal cannot revive
+  /// an authorization the user has taken back.
+  bool get revoked => _revoked;
+  set revoked(bool value) {
+    if (value) _revoked = true;
+  }
+
+  /// An authorization pays for at most one transfer. Consumption is permanent:
+  /// assigning `false` cannot turn a spent authorization back into a valid one.
+  bool get consumed => _consumed;
+  set consumed(bool value) {
+    if (value) _consumed = true;
+  }
+
   bool permits(
           {required String provider,
           required InferenceTask purpose,
@@ -104,7 +126,8 @@ final class MealDraft {
 }
 
 /// Owns the current draft while a provider response is in flight. Only an
-/// explicitly validated response can be placed in the review state.
+/// explicitly validated response can be placed in the review state, and a
+/// response yielding no values is discarded instead of blanking the draft.
 /// Editing or cancelling invalidates an outstanding result; retries require a
 /// new explicit request and consent. This object never writes a diary entry.
 final class InferenceDraftSession {
@@ -154,7 +177,16 @@ final class InferenceDraftSession {
           _draft.status == DraftStatus.committed) {
         throw StateError('STALE_DRAFT');
       }
-      final validated = validate(response.structured!);
+      // The session owns the review transition, so it rechecks withdrawal
+      // independently of the service's post-transfer check; a revoked
+      // authorization must never fill the review state.
+      if (consent.revoked) throw StateError('UNTRUSTED_OR_REVOKED_RESULT');
+      final structured = response.structured;
+      if (structured == null) throw StateError('INVALID_SUGGESTION');
+      final validated = validate(structured);
+      // An empty suggestion cannot describe a reviewable draft; accepting it
+      // would silently blank out the user's content.
+      if (validated.isEmpty) throw StateError('INVALID_SUGGESTION');
       _draft = _draft.receive(
           expectedRevision: origin.revision, suggestion: validated);
     } finally {
@@ -164,15 +196,15 @@ final class InferenceDraftSession {
 }
 
 final class ProviderAuthorization {
-  const ProviderAuthorization(
-      {required this.providerId,
-      this.termsReviewed = false,
-      this.distributionEligible = false,
-      this.transportSupported = false});
+  const ProviderAuthorization({
+    required this.providerId,
+    this.connected = false,
+    this.planUsageGranted = false,
+  });
   final String providerId;
-  final bool termsReviewed, distributionEligible, transportSupported;
-  bool get enabled =>
-      termsReviewed && distributionEligible && transportSupported;
+  final bool connected;
+  final bool planUsageGranted;
+  bool get enabled => connected && planUsageGranted;
 }
 
 final class ReviewedInferenceService {
@@ -186,10 +218,17 @@ final class ReviewedInferenceService {
       required MealDraft draft,
       required TransferConsent consent,
       required DateTime now}) async {
-    if (!authorization.enabled ||
+    if (provider.providerId.isEmpty ||
         authorization.providerId != provider.providerId) {
-      throw StateError('PROVIDER_RELEASE_GATE');
+      throw StateError('PROVIDER_NOT_CONNECTED');
     }
+    if (!authorization.connected) {
+      throw StateError('PROVIDER_NOT_CONNECTED');
+    }
+    if (!authorization.planUsageGranted) {
+      throw StateError('PROVIDER_SCOPE_REQUIRED');
+    }
+    if (request.requestId.isEmpty) throw StateError('INVALID_REQUEST');
     if (draft.status == DraftStatus.cancelled ||
         draft.status == DraftStatus.committed) {
       throw StateError('DRAFT_CLOSED');
@@ -213,9 +252,13 @@ final class ReviewedInferenceService {
     }
     consent.consumed = true;
     final result = await provider.infer(request);
-    if (consent.revoked ||
-        result.requestId != request.requestId ||
-        result.structured == null) {
+    if (result.requestId != request.requestId) {
+      throw StateError('UNTRUSTED_OR_REVOKED_RESULT');
+    }
+    if (result.structured == null) {
+      throw StateError('INVALID_SUGGESTION');
+    }
+    if (consent.revoked) {
       throw StateError('UNTRUSTED_OR_REVOKED_RESULT');
     }
     return result;

@@ -64,6 +64,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save draft'));
     await tester.pumpAndSettle();
+    // Let the save confirmation leave the shared ScaffoldMessenger before
+    // checking the subsequent failure snackbar.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     await repository.replaceCatalogueBatch([food('Changed apple')]);
     await tester.tap(find.text('Drafts'));
     await tester.pumpAndSettle();
@@ -72,5 +76,64 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.textContaining('Food changed'), findsOneWidget);
     expect(await db.select(db.logEntries).get(), isEmpty);
+  });
+  testWidgets('food changed after review cannot be recorded', (tester) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final repository = DriftFoodRepository(db);
+    Food food(String name) => Food(
+        id: 'apple',
+        name: name,
+        per100g: NutrientProfile({}),
+        source: const FoodSource(dataset: 'custom', datasetId: 'apple'));
+    await repository.replaceCatalogueBatch([food('Apple')]);
+    await harness.pump(tester, db, const SearchScreen());
+    await tester.enterText(find.byType(TextField).first, 'Apple');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Choose quantity and log'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Drafts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apple'));
+    await tester.pumpAndSettle();
+    expect(find.text('Record this intake?'), findsOneWidget);
+    await repository.replaceCatalogueBatch([food('Changed apple')]);
+    await tester.tap(find.text('Confirm'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Food changed'), findsOneWidget);
+    expect(await db.select(db.logEntries).get(), isEmpty);
+    expect(await db.select(db.logEntryItems).get(), isEmpty);
+  });
+  testWidgets('removed food cannot be recorded from a draft', (tester) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    await DriftFoodRepository(db).replaceCatalogueBatch([
+      Food(
+          id: 'apple',
+          name: 'Apple',
+          per100g: NutrientProfile({}),
+          source: const FoodSource(dataset: 'custom', datasetId: 'apple')),
+    ]);
+    await harness.pump(tester, db, const SearchScreen());
+    await tester.enterText(find.byType(TextField).first, 'Apple');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Choose quantity and log'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await db.delete(db.catalogFoods).go();
+    await tester.tap(find.text('Drafts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apple'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Food changed'), findsOneWidget);
+    expect(await db.select(db.logEntries).get(), isEmpty);
+    expect(await db.select(db.logEntryItems).get(), isEmpty);
   });
 }
