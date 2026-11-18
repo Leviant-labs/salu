@@ -121,3 +121,41 @@ class LogEntryItems extends Table {
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
+
+/// Photo-first records coexist with the original single-food journal.
+@TableIndex(name: 'photo_meals_diary_date', columns: {#diaryDate})
+@DataClassName('PhotoMealRow')
+class PhotoMeals extends Table {
+  TextColumn get id => text()();
+  TextColumn get diaryDate => text()();
+  TextColumn get slot => text()();
+  TextColumn get caption => text()();
+  IntColumn get createdAtMs => integer()();
+  IntColumn get revision => integer()();
+  TextColumn get photoPath => text().nullable()();
+  TextColumn get itemsJson => text()();
+  TextColumn get estimateStatus => text().withDefault(const Constant('none'))();
+  IntColumn get recordedOffsetMinutes => integer().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class LocalDocuments extends Table {
+  TextColumn get id => text()();
+  IntColumn get revision => integer()();
+  TextColumn get payload => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+@TableIndex(name: 'catalog_barcodes_code', columns: {#code})
+class CatalogBarcodes extends Table {
+  TextColumn get code => text()();
+  TextColumn get foodId => text()();
+  TextColumn get dataset => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {dataset, code};
+}

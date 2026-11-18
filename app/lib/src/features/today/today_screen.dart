@@ -1,224 +1,318 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart';
 
 import '../../providers.dart';
+import '../meals/meal_editor.dart';
+import '../meals/meal_editor_data.dart';
+import '../meals/meal_estimation.dart';
+import 'check_in_screen.dart';
+import '../search/food_library.dart';
 
-/// The diary for the day the app was opened on.
+/// The photo diary. Original single-food logs still appear and count here.
 class TodayScreen extends ConsumerWidget {
-  /// Creates the screen.
   const TodayScreen({super.key});
+
+  Future<void> _edit(BuildContext context, WidgetRef ref, PhotoMeal? meal,
+      {String correction = ''}) async {
+    final today = ref.read(todayDiaryDateProvider);
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => MealEditor(
+        meal: meal,
+        repository: ref.read(photoMealRepositoryProvider),
+        assistant: saluAssistant,
+        foods: ref.read(foodRepositoryProvider),
+        date: ref.read(visibleDiaryDateProvider),
+        today: today,
+        initialCorrection: correction,
+        library: FoodLibrary(ref.read(documentStoreProvider)),
+        onLogged: (date) => ref.read(diarySelectionProvider.notifier).state =
+            date == today ? null : date,
+        newId: ref.read(idGeneratorProvider).next,
+      ),
+    ));
+    if (context.mounted) ref.invalidate(todayMealsProvider);
+  }
+
+  Future<void> _calendar(BuildContext context, WidgetRef ref, DiaryDate date,
+      DiaryDate today) async {
+    final selected = await showDatePicker(
+        context: context,
+        initialDate: date.localMidnight,
+        firstDate: DateTime(1900),
+        lastDate: today.localMidnight);
+    if (selected != null && context.mounted) {
+      ref.read(diarySelectionProvider.notifier).state =
+          DiaryDate.ofLocal(selected);
+    }
+  }
+
+  Future<void> _findCorrection(BuildContext context, WidgetRef ref) async {
+    var text = '';
+    final request = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('Find a meal to correct'),
+              content: TextField(
+                  autofocus: true,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                      hintText: 'I only ate half of Tuesday’s pasta'),
+                  onChanged: (value) => text = value),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(context, text.trim()),
+                    child: const Text('Find meal'))
+              ],
+            ));
+    if (request == null || request.isEmpty || !context.mounted) return;
+    final today = ref.read(todayDiaryDateProvider);
+    final date = mealDateFromIntent(request, today) ??
+        ref.read<DiaryDate>(visibleDiaryDateProvider);
+    final repository = ref.read(photoMealRepositoryProvider);
+    try {
+      final candidates = await repository.listFor(date);
+      if (!context.mounted) return;
+      if (candidates.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'No meals found on ${date.toIso()}. Choose another date in the diary.')));
+        return;
+      }
+      final meal = await showDialog<PhotoMeal>(
+          context: context,
+          builder: (context) => SimpleDialog(
+                title: Text('Which meal on ${date.toIso()}?'),
+                children: [
+                  for (final candidate in candidates)
+                    SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, candidate),
+                        child: Text(
+                            '${candidate.slot.label} · ${candidate.items.isEmpty ? candidate.caption : candidate.items.map((item) => item.name).join(', ')}')),
+                ],
+              ));
+      if (meal != null && context.mounted) {
+        await _edit(context, ref, meal, correction: request);
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not read that diary date.')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final today = ref.watch(todayDiaryDateProvider);
+    final date = ref.watch(visibleDiaryDateProvider);
+    final meals = ref.watch(todayMealsProvider);
     final entries = ref.watch(todayEntriesProvider);
-    final date = ref.watch(todayDiaryDateProvider);
-
-    return entries.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stackTrace) => _ErrorState(
-        message: '$error',
-        onRetry: () => ref.invalidate(todayEntriesProvider),
-      ),
-      data: (list) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        children: [
-          _DaySummary(entries: list, date: date),
-          const SizedBox(height: 24),
-          if (list.isEmpty)
-            const _EmptyState()
-          else
-            for (final entry in list) _EntryTile(entry: entry),
-        ],
-      ),
-    );
-  }
-}
-
-/// Energy and macro totals with explicit data-coverage wording.
-class _DaySummary extends StatelessWidget {
-  const _DaySummary({required this.entries, required this.date});
-
-  final List<LoggedEntry> entries;
-  final DiaryDate date;
-
-  static double _sum(List<LoggedEntry> entries, NutrientKey key) =>
-      entries.fold(0, (total, entry) => total + entry.nutrientSum(key).value);
-
-  static bool _covered(List<LoggedEntry> entries, NutrientKey key) =>
-      entries.isNotEmpty &&
-      entries.every((entry) => entry.nutrientSum(key).isComplete);
-
-  @override
-  Widget build(BuildContext context) {
+    final photos = meals.valueOrNull ?? const <PhotoMeal>[];
+    final legacy = entries.valueOrNull ?? const <LoggedEntry>[];
+    final profiles = [
+      for (final entry in legacy)
+        for (final item in entry.items) item.nutrients,
+      for (final meal in photos)
+        if (meal.items.isEmpty)
+          NutrientProfile({})
+        else
+          for (final item in meal.items) item.nutrients,
+    ];
     final theme = Theme.of(context);
-    final energy = _sum(entries, NutrientKey.energyKcal);
-    final energyCovered = _covered(entries, NutrientKey.energyKcal);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(date.toIso(), style: theme.textTheme.labelLarge),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(_format(energy), style: theme.textTheme.displaySmall),
-                const SizedBox(width: 6),
-                Text('kcal', style: theme.textTheme.titleMedium),
-              ],
-            ),
-            if (!energyCovered)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'Partial: at least one item has no energy value recorded',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                for (final key in const [
-                  NutrientKey.proteinG,
-                  NutrientKey.carbohydrateG,
-                  NutrientKey.fatG,
-                  NutrientKey.fiberG,
-                ])
-                  _MacroChip(
-                    label: _label(key),
-                    grams: _sum(entries, key),
-                    covered: _covered(entries, key),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One macro reading; unknown coverage is shown as `--`, never as 0 g.
-class _MacroChip extends StatelessWidget {
-  const _MacroChip({
-    required this.label,
-    required this.grams,
-    required this.covered,
-  });
-
-  final String label;
-  final double grams;
-  final bool covered;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final ready = meals.hasValue && entries.hasValue;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
-        Text(label, style: theme.textTheme.labelSmall),
-        Text(
-          covered ? '${_format(grams)} g' : '-- g',
-          style: theme.textTheme.titleSmall,
+        Row(children: [
+          IconButton(
+              tooltip: 'Previous day',
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () => ref.read(diarySelectionProvider.notifier).state =
+                  date.addDays(-1)),
+          Expanded(
+              child: TextButton.icon(
+                  onPressed: () => _calendar(context, ref, date, today),
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  label: Text(date.toIso()))),
+          IconButton(
+              tooltip: 'Next day',
+              icon: const Icon(Icons.chevron_right),
+              onPressed: date.compareTo(today) >= 0
+                  ? null
+                  : () => ref.read(diarySelectionProvider.notifier).state =
+                      date.addDays(1)),
+        ]),
+        Text('Meal diary', style: theme.textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: () => _edit(context, ref, null),
+          icon: const Icon(Icons.add_a_photo_outlined),
+          label: const Text('Log a meal'),
         ),
+        TextButton.icon(
+            onPressed: () => _findCorrection(context, ref),
+            icon: const Icon(Icons.edit_note),
+            label: const Text('Find and correct a meal')),
+        TextButton.icon(
+            onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(builder: (_) => CheckInScreen(date: date))),
+            icon: const Icon(Icons.insights_outlined),
+            label: const Text('Weekly check-in')),
+        const SizedBox(height: 12),
+        if (meals.hasError || entries.hasError)
+          OutlinedButton(
+            onPressed: () {
+              ref.invalidate(todayMealsProvider);
+              ref.invalidate(todayEntriesProvider);
+            },
+            child: const Text('Could not load all meals. Try again'),
+          )
+        else if (!ready)
+          const LinearProgressIndicator(),
+        if (ready && profiles.isEmpty) ...[
+          const SizedBox(height: 16),
+          Text('Nothing logged yet', style: theme.textTheme.titleMedium),
+          const Text(
+              'Start with a meal photo, a description, or a food search.'),
+        ],
+        for (final slot in MealSlot.values)
+          if (photos.any((meal) => meal.slot == slot)) ...[
+            const SizedBox(height: 16),
+            Text(slot.label, style: theme.textTheme.titleLarge),
+            for (final meal in photos.where((meal) => meal.slot == slot))
+              _MealCard(
+                  meal: meal,
+                  onTap: () => _edit(context, ref, meal),
+                  retry: () => estimateSavedMeal(
+                      meal: meal,
+                      repository: ref.read(photoMealRepositoryProvider),
+                      assistant: saluAssistant,
+                      newId: ref.read(idGeneratorProvider).next)),
+          ],
+        if (legacy.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text('Individual foods', style: theme.textTheme.titleLarge),
+          for (final entry in legacy)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.restaurant_outlined),
+              title: Text(entry.items.map((item) => item.name).join(', ')),
+              subtitle: Text('${mealNumberText(entry.grams)} g · '
+                  '${_total(entry.items.map((item) => item.nutrients), NutrientKey.energyKcal)}'),
+            ),
+        ],
+        if (ready && profiles.isNotEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      date == today ? 'Recorded today' : 'Recorded on this day',
+                      style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: [
+                      for (final key in const [
+                        NutrientKey.energyKcal,
+                        NutrientKey.proteinG,
+                        NutrientKey.carbohydrateG,
+                        NutrientKey.fatG,
+                        NutrientKey.fiberG
+                      ])
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(key.label),
+                            Text(_total(profiles, key))
+                          ],
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
 }
 
-/// One logged entry.
-class _EntryTile extends StatelessWidget {
-  const _EntryTile({required this.entry});
+class _MealCard extends StatelessWidget {
+  const _MealCard(
+      {required this.meal, required this.onTap, required this.retry});
 
-  final LoggedEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final local = entry.stamp.localWallTime;
-    final time =
-        '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}';
-    final names = entry.items.map((item) => item.name).join(', ');
-    final energy = entry.nutrientSum(NutrientKey.energyKcal);
-
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(child: Text(time)),
-      title: Text(names),
-      subtitle: Text(
-        [
-          '${_format(entry.grams)} g',
-          energy.isComplete
-              ? '${_format(energy.value)} kcal'
-              : 'energy unknown',
-          entry.channel.label,
-        ].join(' · '),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  final PhotoMeal meal;
+  final VoidCallback onTap;
+  final VoidCallback retry;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Column(
-        children: [
-          Icon(
-            Icons.restaurant_outlined,
-            size: 40,
-            color: theme.colorScheme.outline,
-          ),
-          const SizedBox(height: 12),
-          Text('Nothing logged yet', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'Search the Food tab to log something. Everything here is stored on '
-            'this device.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
+    final path = meal.photoPath;
+    final title = meal.caption.isNotEmpty
+        ? meal.caption
+        : meal.items.isEmpty
+            ? meal.slot.label
+            : meal.items.map((item) => item.name).join(', ');
+    final estimated =
+        meal.items.any((item) => item.source == 'openai-meal-estimate');
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.error_outline, size: 40),
-            const SizedBox(height: 12),
-            Text(
-              'Could not read the diary',
-              style: Theme.of(context).textTheme.titleMedium,
+            if (path != null)
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.file(
+                  File(path),
+                  fit: BoxFit.cover,
+                  cacheWidth: 1200,
+                  semanticLabel: '${meal.slot.label} photo',
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Center(child: Text('Meal photo unavailable')),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  if (meal.items.isNotEmpty && meal.caption.isNotEmpty)
+                    Text(meal.items.map((item) => item.name).join(', ')),
+                  Text(meal.items.isEmpty
+                      ? 'Foods and portions not identified yet'
+                      : '${_total(meal.items.map((item) => item.nutrients), NutrientKey.energyKcal)}'
+                          '${estimated ? ' · AI estimate' : ''}'),
+                  Text('Review or correct', style: theme.textTheme.labelLarge),
+                  if (meal.items.isEmpty &&
+                      meal.estimateStatus != MealEstimateStatus.none)
+                    ValueListenableBuilder<Set<String>>(
+                        valueListenable: activeMealEstimates,
+                        builder: (context, active, child) => active
+                                .contains(meal.id)
+                            ? const Text('Estimating…')
+                            : TextButton(
+                                onPressed: retry,
+                                child: const Text(
+                                    'Retry AI estimate (sends photo/text to OpenAI)'))),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Try again')),
           ],
         ),
       ),
@@ -226,18 +320,15 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-String _format(double value) {
-  if (value == value.roundToDouble()) return value.round().toString();
-  return value.toStringAsFixed(1);
+String _total(Iterable<NutrientProfile> profiles, NutrientKey key) {
+  var sum = NutrientSum.zero;
+  var known = false;
+  for (final profile in profiles) {
+    final value = profile[key];
+    known |= value.isKnown;
+    sum = sum.adding(value);
+  }
+  if (!known || !sum.value.isFinite) return '-- ${key.unit}';
+  return '${sum.includesEstimate ? '≈' : ''}${mealNumberText(sum.value)} ${key.unit}'
+      '${sum.isComplete ? '' : ' · partial'}${sum.includesTrace ? ' · includes trace' : ''}';
 }
-
-String _label(NutrientKey key) => switch (key) {
-  NutrientKey.proteinG => 'Protein',
-  NutrientKey.carbohydrateG => 'Carbs',
-  NutrientKey.fatG => 'Fat',
-  NutrientKey.fiberG => 'Fiber',
-  NutrientKey.sugarsG => 'Sugars',
-  NutrientKey.saturatedFatG => 'Sat. fat',
-  NutrientKey.sodiumMg => 'Sodium',
-  NutrientKey.energyKcal => 'Energy',
-};

@@ -1,6 +1,31 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
+
+import 'assistant/assistant.dart';
+import 'features/onboarding/planning_profile.dart';
+import 'features/plan/week_plan.dart';
+
+/// The same assistant instance handles Settings, diary and Plan requests.
+final saluAssistant = SaluAssistant();
+
+final photoMealRepositoryProvider = Provider<PhotoMealRepository>(
+  (ref) => DriftPhotoMealRepository(ref.watch(databaseProvider)),
+);
+
+final diarySelectionProvider = StateProvider<DiaryDate?>((ref) => null);
+final visibleDiaryDateProvider = Provider<DiaryDate>((ref) =>
+    ref.watch(diarySelectionProvider) ?? ref.watch(todayDiaryDateProvider));
+
+final todayMealsProvider = StreamProvider<List<PhotoMeal>>((ref) {
+  final repository = ref.watch(photoMealRepositoryProvider);
+  final date = ref.watch(visibleDiaryDateProvider);
+  return repository is LivePhotoMealRepository
+      ? repository.watchFor(date)
+      : Stream.fromFuture(repository.listFor(date));
+});
 
 /// The open database. Overridden in `main()` with the real instance and in tests
 /// with an in-memory one; reading it without an override is a wiring bug.
@@ -9,6 +34,13 @@ final databaseProvider = Provider<AppDatabase>(
     'databaseProvider must be overridden in main() or in the test scope',
   ),
 );
+
+final documentStoreProvider = Provider<LocalDocumentStore>(
+    (ref) => LocalDocumentStore(ref.watch(databaseProvider)));
+final planningProfileStoreProvider = Provider<PlanningProfileStore>(
+    (ref) => PlanningProfileStore(documents: ref.watch(documentStoreProvider)));
+final weekPlanStoreProvider = Provider<WeekPlanStore>(
+    (ref) => WeekPlanStore(documents: ref.watch(documentStoreProvider)));
 
 /// Catalogue reads.
 final foodRepositoryProvider = Provider<FoodRepository>(
@@ -42,16 +74,19 @@ final logFoodHandlerProvider = Provider<LogFoodHandler>(
 int currentOffsetMinutes() => DateTime.now().timeZoneOffset.inMinutes;
 
 /// The diary date the app opens on.
-final todayDiaryDateProvider = Provider<DiaryDate>(
-  (ref) => DiaryDate.assign(
-    EventStamp(instant: DateTime.now(), offsetMinutes: currentOffsetMinutes()),
-  ),
-);
+final todayDiaryDateProvider = Provider<DiaryDate>((ref) {
+  final date = DiaryDate.ofLocal(DateTime.now());
+  final timer = Timer.periodic(const Duration(seconds: 20), (_) {
+    if (DiaryDate.ofLocal(DateTime.now()) != date) ref.invalidateSelf();
+  });
+  ref.onDispose(timer.cancel);
+  return date;
+});
 
 /// Entries for the opened diary date.
 final todayEntriesProvider = FutureProvider<List<LoggedEntry>>((ref) async {
   final repository = ref.watch(entryRepositoryProvider);
-  return repository.entriesFor(ref.watch(todayDiaryDateProvider));
+  return repository.entriesFor(ref.watch(visibleDiaryDateProvider));
 });
 
 /// Catalogue search results for [query]; empty below two characters.

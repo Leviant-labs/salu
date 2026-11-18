@@ -1,21 +1,20 @@
 # Deterministic nutrition engine — corrected contract
 
-Status: draft v2 · 2026-11-08. Companion to app-spec.md draft v3.
-Supersedes the v1 research draft, preserved as nutrition-engine-spec-v1-research.md.
-The review in nutrition-engine-review.md describes v1, not this revision.
+Status: draft v2, aligned with the [Salu product spec](product-spec.md).
+Supersedes the v1 research draft; §14 summarizes which assumptions were retired.
 
-This is a domain and implementation contract, not clinical validation or working
-application code. Planning and coaching remain core offline features. AI is only
-an optional input, command-interpretation, and explanation layer.
-ChatGPT-powered label OCR and meal-photo assistance remain supported optional
-inputs through the app's provider adapter; each produces a reviewed draft. A
-custom on-device food vision model remains deferred to later research.
+This is the target domain contract, not clinical validation or a claim that the
+features are implemented. See [Architecture](architecture.md) for the scaffold.
+AI leads photo-first logging and can choose or suggest meals in Plan. App services
+own calculation, constraints, and commit policy. Local planning and coaching must
+also work without inference. ChatGPT-powered label OCR and meal-photo inference
+are distinct target adapter tasks; on-device food vision is deferred research.
 
 ## 1. Authority, evidence, and release status
 
 - This file owns nutrition semantics, calculation contracts, policy behavior, and
-  algorithm acceptance tests. app-spec.md owns product, storage, integration,
-  privacy, and delivery requirements. Neither silently overrides the other.
+  algorithm acceptance tests. The [product spec](product-spec.md) owns product,
+  storage, integration, privacy, and delivery requirements.
 - [G] = published guideline/reference for a named population. [R] = research in
   a specified population. [P] = engineering/product choice requiring evaluation.
 - Citing the ingredients of a custom algorithm does not validate the composition.
@@ -47,7 +46,11 @@ recipe definitions + batches -> meal planner -> grocery list / plan repair
 Services: FoodCalculationService, ReferenceComparisonService, EligibilityService,
 TargetService, WeightObservationService, PlannerService, CoachingService.
 An ExperimentalAdaptationService can propose changes; it cannot write a target.
-All writes use ordinary validated commands, snapshot revisions, and confirmation.
+All writes use validated commands. An explicit new-meal request authorizes local
+autosave after validation, including usable estimates and unresolved fields (§4).
+An existing meal changes only after preview and user confirmation of that revision.
+Plan and target proposals also require confirmation. See the
+[logging contract](product-spec.md#31-new-meal-vs-correction) for intent routing.
 
 ## 3. Eligibility and safety — one policy, separate permissions
 
@@ -124,7 +127,8 @@ NutritionBasis { quantity: FoodQuantity, preparation_state, edible_basis }
 NutrientObservation {
   nutrient_id, amount_decimal?, unit, basis,
   qualifier: reported | reported_zero | below_detection | trace | estimated | unknown,
-  origin: label | analytical_reference | ingredient_calculation | user_entry | imputation,
+   origin: label | analytical_reference | ingredient_calculation | user_entry
+           | photo_inference | imputation,
   definition_id, source_id, source_version, evidence_date?,
   supplied_interval?: {lower?, upper?, inclusivity, scope, method}
 }
@@ -144,6 +148,9 @@ NutrientObservation {
   rounding/detection information when available; do not invent an interval.
 - An omitted nutrient stays unknown. A model guess or borrowed reference stays
   estimated; neither becomes verified because it was user-reviewed.
+- A photo-derived portion makes the scaled contribution estimated, even when
+  the per-serving or per-mass observation came from a printed label. Preserve
+  both the quantity assumption and the source observation.
 - Separate foods in materially different preparation states. Raw-to-cooked record
   matching is not an arbitrary universal weight multiplier.
 
@@ -161,6 +168,16 @@ example: 40 kcal per 100 ml * 250 ml / 100 ml = 100 kcal, no density needed
 A day total sums compatible recorded observations. Arithmetic is deterministic;
 input variability, rounding, omitted foods, and incorrect food matches remain.
 Do not call the reported sum a guaranteed lower bound on actual intake.
+
+A meal photo and multiple label images are evidence for identified items within
+one meal. Pick one effective observation per item and nutrient definition; a
+matched usable label replaces an overlapping generic estimate rather than adding
+another contribution. Multiple views or repeated extraction do not imply multiple
+portions. A label provides its printed basis, not the amount eaten. Unassigned
+labels, conflicting evidence that cannot be resolved, and incompatible or unknown
+portions do not create numeric contributions. If a catalogue search or barcode
+lookup fails, use the [no-match paths](product-spec.md#33-alternative-inputs-and-no-match-paths)
+to resolve a source or save an unresolved item; never manufacture an observation.
 
 Derived-energy checks use definition-specific factors and subtract overlapping
 components before applying factors. EU factors include carbohydrate except
@@ -185,6 +202,12 @@ NutrientSummary {
 For an entirely unknown nutrient, recorded_sum is absent, not zero. For a partial
 record, display 'recorded amount; missing for these foods', not a bare total.
 Known-zero records can produce a reported zero, with source limitations intact.
+On a validated new-meal autosave, include usable estimated contributions immediately
+in the recorded meal and daily sums. Make their presence visible; a total can be
+both estimated and partial. An unresolved item, quantity, or nutrient stays
+unknown and affects applicable coverage. Counting estimates in the diary does not
+establish completeness or qualify the data for reference comparisons, coaching,
+or adaptation under the rules below.
 
 - No catalogue percentile is a hard upper bound.
 - No mass-weighted coverage percentage certifies nutrient completeness. Optional
@@ -200,9 +223,16 @@ Known-zero records can produce a reported zero, with source limitations intact.
 
 Freeze quantity, observations, conversions, recipe/batch identity, source versions,
 and engine/policy versions at intake commitment. Catalogue changes do not rewrite
-history. An explicit correction creates a revision; any derived result whose
-input revision changes is invalidated, regardless of how recent the edit is.
-Record the diary date and original time/zone separately from current display zone.
+history. Include item-level evidence provenance, including for estimates and
+unresolved observations. Record the assigned diary date and meal slot separately
+from the event time, original zone/offset, and current display zone. A photo with
+“this was my lunch today” assigns Lunch on the diary date resolved at the request.
+
+A correction (including late label evidence) previews changes to the existing meal
+and its totals against the saved revision. No saved values change before user
+confirmation. Apply only against the previewed revision; commit a new revision
+of the same meal and invalidate results that depended on the old revision,
+regardless of how recent the edit is. Retries must not add another meal or revision.
 
 ## 5. Recipes, cooked batches, and groceries
 
@@ -332,6 +362,11 @@ Target {
 A target, a planner tolerance, and statistical uncertainty are different objects.
 Do not manufacture an individual ±10% confidence interval from population RMR
 prediction studies. Display assumptions and lack of individual measurement.
+
+Onboarding can record starting weight separately from goals, a declared target
+or a confirmed policy-generated proposal, and planning preferences. Optional
+dietary or activity intentions are non-prescriptive and do not create or change
+a target. Skipping them does not block logging or organization-only planning.
 
 ### 7.2 Baseline candidate [P unless otherwise noted]
 
@@ -496,7 +531,14 @@ shifts. Predefine error, lag, false-adjustment, uncertainty-coverage, abstention
 and harmful-restriction criteria. Record parameter versions and scope. Passing
 unit tests is necessary but not clinical efficacy or safety validation.
 
-## 9. Deterministic meal planning — core
+## 9. Meal planning — deterministic constraints and validation
+
+The full-size [Plan workspace](product-spec.md#6-plan-workspace) can use AI to
+select eligible meals or propose recipes, portions, and swaps. Resolve candidates
+against current recipe, batch, and ingredient data; app services recalculate
+totals and apply the same constraints and validation as for manual choices and
+local search. AI does not certify suitability or commit a plan. The accepted plan
+is separate from intake and drives editable groceries (§5).
 
 ### 9.1 Inputs and constraints
 
@@ -519,9 +561,11 @@ with a medical exclusion is reported as a conflict, never allowed to override it
 
 Soft objectives: nutritional target proximity, data completeness, fibre/food-group
 variety, sodium/saturated-fat/free-sugar guidance, cooking effort, budget estimates,
-reuse, preferences, and unwanted repetition. Meal buckets, energy-share splits,
-and two-repeats-per-week rules are not universal safety constraints. Support the
-user's own meal schedule and deliberate batch cooking.
+reuse, preferences, and unwanted repetition. For example, disliking carbonara
+steers the selection away from it; explicitly excluding carbonara is a hard
+constraint. Meal buckets, energy-share splits, and two-repeats-per-week rules
+are not universal safety constraints. Support the user's own meal schedule and
+deliberate batch cooking.
 
 Only use nutritionally resolved candidates for binding numeric nutrient checks.
 Unknown sodium/free sugars do not become zero-cost foods. Partition numerical
@@ -530,7 +574,9 @@ nutritionally better than an observed one.
 
 ### 9.2 Search and objective
 
-Start with seeded construction plus bounded local search and reproducible ties.
+For local planning, start with seeded construction plus bounded local search and
+reproducible ties. AI choices can vary; validation for the same candidate and
+inputs does not depend on which path proposed it.
 The search budget and candidate/portion discretization are [P] operational settings.
 Use staged priorities: immutable feasibility, other hard feasibility, preservation
 of user pins/unchanged valid meals, then normalized nutritional/practical objectives.
@@ -652,6 +698,16 @@ These are required tests for later implementation, not checks already executed.
 
 ### Recording and arithmetic
 
+- Photo plus “this was my lunch today” saves one Lunch snapshot and updates the
+  recorded meal/day totals. Usable estimates count and are marked; unresolved
+  fields stay unknown. A retry produces no second entry.
+- A meal photo and multiple labels for its items (including repeated label views)
+  count each consumed portion once. A usable matched label replaces the overlapping
+  estimate; an unassigned label cannot add a serving. An unknown quantity stays
+  unknown even when the label's serving basis is usable.
+- An unmatched local search, photo, or barcode can resolve through manual or label
+  evidence or remain unknown. A correction preview leaves saved totals intact;
+  confirmation revises that meal once and stale previews cannot overwrite it.
 - Per-100-ml product logged in ml works without density; incompatible g/ml needs
   a conversion or clarification. Reported zeros remain distinguished from absence.
 - EU/US carbohydrate imports preserve definitions and avoid double fibre subtraction.
@@ -665,6 +721,8 @@ These are required tests for later implementation, not checks already executed.
 
 ### Targets, safety, and coaching
 
+- Skipped starting weight or optional dietary/activity intentions do not cause an
+  invented eligibility input or an automatic target. Proposals remain policy-gated.
 - Safety flags survive sparse records, disabled adaptation, and user manual targets.
 - Pregnancy/minor/clinical routes never substitute ordinary adult 'adequacy planning'.
 - Coeliac/strict-allergy behavior is identical in policy, examples, UI, and tests.
@@ -698,18 +756,21 @@ These are required tests for later implementation, not checks already executed.
 - Strict unknown-allergen candidate rejected; pins cannot override an exclusion.
 - Missing sodium does not make a candidate automatically beat a measured candidate.
 - Ingredient-resolution checks are enforced by the validator, not only by search.
+- AI-proposed choices and swaps use the same validator as local/manual candidates.
+  A carbonara dislike influences selection; an explicit exclusion rejects it.
+  Confirming the plan updates groceries without logging intake.
 - Unaccepted relaxation cannot become an active plan. User-hard revisions and
   accepted changes are versioned and revalidated.
 - RecipeVersion cannot be used as unlimited leftover inventory. Cross-week batches
   preserve stock, units, and intake separation; overallocations are rejected.
-- Same inputs, catalogue/policy versions, and seed produce reproducible results
-  under the declared execution/numeric model. No claim of global optimization.
+- For local search, the same inputs, catalogue/policy versions, and seed produce
+  reproducible results under the declared model. No claim of global optimization.
 
 ## 13. Evidence anchors and outstanding approval
 
 These links anchor selected claims, not blanket approval of the implementation.
-The v1 research archive contains a broader bibliography; unverified extrapolations
-there are not carried forward by reference.
+Unverified extrapolations from the earlier research draft are not carried forward
+by reference.
 
 - [G1] EU Regulation 1169/2011, Annexes I/XIII/XIV: definitions, label reference
   intakes, and energy factors. https://eur-lex.europa.eu/eli/reg/2011/1169/oj/eng
@@ -748,6 +809,7 @@ day/full-period TEE arithmetic; fixed-baseline clamp as claimed calibration;
 uncapped upward prescriptions; heuristic day completeness; automatic constraint
 relaxation; heuristic failure as infeasibility; recipe-as-infinite-batch inventory.
 
-Retained: core deterministic planning/coaching, optional ChatGPT interaction,
-source-aware arithmetic, snapshots, practical user-controlled targets, transparent
-findings, no exercise double-counting, supportive rewards, and staged validation.
+Retained: deterministic calculation, planning validation and local search,
+policy-gated coaching and targets, source-aware observations, historical snapshots,
+no exercise double-counting, supportive rewards, and staged validation. The
+photo-first and AI-led planning flows use these same contracts.

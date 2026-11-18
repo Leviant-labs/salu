@@ -75,6 +75,8 @@ sealed class NutrientValue {
                 basis: json['basis'] as String? ?? 'unspecified',
               )
             : NutrientUnknown();
+      case 'reported':
+        return value is num ? NutrientReported(value.toDouble()) : unknown;
       case 'trace':
         return trace;
       default:
@@ -131,6 +133,29 @@ final class NutrientMeasured extends NutrientValue {
 
   @override
   String toString() => 'NutrientMeasured($value)';
+}
+
+/// A declared value, e.g. a printed zero that is not proof of exact absence.
+final class NutrientReported extends NutrientValue {
+  NutrientReported(this.value) {
+    if (!value.isFinite || value < 0) {
+      throw ArgumentError.value(value, 'value', 'must be finite and >= 0');
+    }
+  }
+
+  final double value;
+
+  @override
+  double get numericValue => value;
+
+  @override
+  Map<String, Object?> toJson() => {'state': 'reported', 'value': value};
+
+  @override
+  bool operator ==(Object other) => other is NutrientReported && other.value == value;
+
+  @override
+  int get hashCode => Object.hash('reported', value);
 }
 
 /// Below the reporting threshold: contributes zero to totals but is not the
@@ -325,6 +350,8 @@ final class NutrientProfile {
           scaled[entry.key] = value;
         case NutrientMeasured():
           scaled[entry.key] = NutrientMeasured(value.value * factor);
+        case NutrientReported():
+          scaled[entry.key] = NutrientReported(value.value * factor);
         case NutrientEstimated():
           scaled[entry.key] = NutrientEstimated(
             value.value * factor,

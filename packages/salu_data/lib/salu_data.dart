@@ -5,7 +5,12 @@
 library;
 
 export 'src/codec.dart';
+export 'src/catalogue/catalogue_pack.dart';
 export 'src/database/app_database.dart';
+export 'src/catalogue/bundled_catalogue.dart'
+    show installBundledCatalogue, bundledCatalogueAttribution;
 export 'src/dev_seed.dart';
 export 'src/repositories/drift_entry_repository.dart';
 export 'src/repositories/drift_food_repository.dart';
+export 'src/repositories/drift_photo_meal_repository.dart';
+export 'src/repositories/local_document_store.dart';

@@ -7,10 +7,14 @@ part 'app_database.g.dart';
 
 /// The local database.
 ///
-/// Schema v1 covers the replaceable catalogue and the diary. Targets, plans,
-/// weight and water arrive in later versions, each with a migration step - see
-/// `docs/architecture.md` for the rule that no version ships without one.
-@DriftDatabase(tables: [CatalogFoods, LogEntries, LogEntryItems])
+@DriftDatabase(tables: [
+  CatalogFoods,
+  LogEntries,
+  LogEntryItems,
+  PhotoMeals,
+  LocalDocuments,
+  CatalogBarcodes
+])
 class AppDatabase extends _$AppDatabase {
   /// Opens a database over [executor].
   AppDatabase(super.executor);
@@ -19,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -27,9 +31,24 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (m, from, to) async {
-          // No upgrade path exists yet: v1 is the first schema. When v2 lands, add a
-          // `stepByStep` block here and a test that migrates a v1 fixture forward.
-          throw UnsupportedError('No migration from schema $from to $to');
+          if (from < 1 || from > 2 || to != 3) {
+            throw UnsupportedError('No migration from schema $from to $to');
+          }
+          await transaction(() async {
+            if (from == 1) {
+              await m.createTable(photoMeals);
+              await customStatement(
+                'CREATE INDEX photo_meals_diary_date ON photo_meals (diary_date)',
+              );
+            } else {
+              await m.addColumn(photoMeals, photoMeals.estimateStatus);
+              await m.addColumn(photoMeals, photoMeals.recordedOffsetMinutes);
+            }
+            await m.createTable(localDocuments);
+            await m.createTable(catalogBarcodes);
+            await customStatement(
+                'CREATE INDEX catalog_barcodes_code ON catalog_barcodes (code)');
+          });
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

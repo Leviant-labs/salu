@@ -1,0 +1,61 @@
+name: Android preview
+
+on:
+  push:
+    branches: ['test/android-preview*']
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.0'
+          cache: true
+
+      - name: Install Android SDK components
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+
+      - name: Generate Drift code
+        working-directory: packages/salu_data
+        run: |
+          dart pub get
+          dart run build_runner build
+
+      - name: Build preview APK
+        working-directory: app
+        env:
+          SALU_PLATFORM_ORG: pt.salu.preview
+        run: |
+          bash tool/bootstrap_platforms.sh
+          flutter pub get
+          flutter build apk --debug
+
+      - name: Verify APK and publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk=app/build/app/outputs/flutter-apk/app-debug.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$apk"
+          cp "$apk" "$RUNNER_TEMP/salu-preview.apk"
+          tag="android-preview-${GITHUB_SHA:0:8}"
+          gh release create "$tag" "$RUNNER_TEMP/salu-preview.apk#Salu Android preview APK" \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Salu Android preview (${GITHUB_SHA:0:8})" \
+            --notes 'Android test build with the photo diary, recipe planner, groceries, and weekly check-in. The preview uses a separate app ID so it can be installed alongside earlier APKs. AI features use a user-supplied OpenAI API key.'

@@ -18,9 +18,26 @@ fi
 
 flutter create \
   --project-name salu \
-  --org pt.salu \
+  --org "${SALU_PLATFORM_ORG:-pt.salu}" \
   --platforms android,ios \
   --no-pub \
   .
+
+if [[ -f ios/Runner/Info.plist ]]; then
+  if [[ -x /usr/libexec/PlistBuddy ]]; then
+    /usr/libexec/PlistBuddy -c 'Add :NSCameraUsageDescription string Take photos of meals and nutrition labels for your diary.' ios/Runner/Info.plist 2>/dev/null || :
+    /usr/libexec/PlistBuddy -c 'Add :NSPhotoLibraryUsageDescription string Choose photos of meals and nutrition labels for your diary.' ios/Runner/Info.plist 2>/dev/null || :
+  else
+    echo 'On macOS, rerun this script to add iOS photo and camera usage descriptions.'
+  fi
+fi
+
+# Flutter's default main manifest omits INTERNET for release builds.
+manifest=android/app/src/main/AndroidManifest.xml
+if ! grep -q 'android.permission.INTERNET' "$manifest"; then
+  tmp="$(mktemp)"
+  awk '/<application/ && !added {print "    <uses-permission android:name=\"android.permission.INTERNET\" />"; added = 1} {print}' "$manifest" > "$tmp"
+  mv "$tmp" "$manifest"
+fi
 
 echo "Platform folders generated. Run: flutter pub get && flutter run"
