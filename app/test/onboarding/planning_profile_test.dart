@@ -13,9 +13,32 @@ class _MemoryProfile extends PlanningProfileStore {
 
   @override
   Future<void> save(PlanningProfile next) async => profile = next;
+
+  @override
+  Future<void> skipOnboarding() async =>
+      profile = const PlanningProfile(onboarded: true);
 }
 
 void main() {
+  testWidgets('first-run setup can be skipped and remembers that choice',
+      (tester) async {
+    final store = _MemoryProfile();
+    var finished = false;
+    await tester.pumpWidget(MaterialApp(
+        home: OnboardingScreen(
+      store: store,
+      firstRun: true,
+      onSaved: () => finished = true,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome to Salu'), findsOneWidget);
+    final skip = find.text('Skip for now');
+    await tester.ensureVisible(skip);
+    await tester.tap(skip);
+    await tester.pumpAndSettle();
+    expect(finished, isTrue);
+    expect(store.profile.onboarded, isTrue);
+  });
   test(
     'preferences persist without weight and can be updated without erasing the profile',
     () async {

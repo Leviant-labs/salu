@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/src/assistant/assistant.dart';
+import 'package:salu/src/assistant/chatgpt_session.dart';
 
 const _key = 'sk-proj-test-only-not-a-real-key';
 const _prompt = 'Summarize the meal.';
@@ -13,6 +14,50 @@ const _jpegSignature = [0xff, 0xd8, 0xff];
 const _pngSignature = [0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10];
 
 void main() {
+  test('ChatGPT plan requests use streaming and require completion', () async {
+    final completed = jsonDecode(_result('{"items":["toast"]}'));
+    final client = _FakeHttpClient.reply(_response(
+      'data: {"type":"response.output_text.delta","delta":"partial"}\n\n'
+      'data: ${jsonEncode({
+            'type': 'response.completed',
+            'response': completed
+          })}\n\n',
+    ));
+    final assistant = SaluAssistant(
+      chatGptSession: _FakeChatGptSession(),
+      httpClientFactory: () => client,
+    );
+    expect(await _ask(assistant), {
+      'items': ['toast']
+    });
+    final body =
+        jsonDecode(utf8.decode(client.request.body)) as Map<String, dynamic>;
+    expect(body['stream'], isTrue);
+    expect(body['store'], isFalse);
+    expect(body.containsKey('max_output_tokens'), isFalse);
+    expect(body['model'], 'test-chatgpt-model');
+    expect(client.request.headers.values['accept'], 'text/event-stream');
+
+    final incomplete = _FakeHttpClient.reply(_response(
+      'data: {"type":"response.output_text.delta","delta":"partial"}\n\n',
+    ));
+    await expectLater(
+      _ask(SaluAssistant(
+          chatGptSession: _FakeChatGptSession(),
+          httpClientFactory: () => incomplete)),
+      throwsA(_error(SaluAssistantErrorCode.incompleteResponse)),
+    );
+    final limited = _FakeHttpClient.reply(_response(
+      'data: {"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded"}}}\n\n',
+    ));
+    await expectLater(
+      _ask(SaluAssistant(
+          chatGptSession: _FakeChatGptSession(),
+          httpClientFactory: () => limited)),
+      throwsA(_error(SaluAssistantErrorCode.quotaExceeded)),
+    );
+  });
+
   test(
     'connection state is local; only ask can create an HTTP client',
     () async {
@@ -402,6 +447,15 @@ void main() {
       expect(client.request.headers.values, isEmpty);
     },
   );
+}
+
+class _FakeChatGptSession extends ChatGptSession {
+  @override
+  Future<bool> get isConnected async => true;
+  @override
+  Future<String> accessToken() async => 'test-oauth-access-token';
+  @override
+  Future<String> model(String token) async => 'test-chatgpt-model';
 }
 
 Matcher _error(SaluAssistantErrorCode code) => isA<SaluAssistantException>()

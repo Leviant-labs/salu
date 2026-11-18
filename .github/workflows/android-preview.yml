@@ -59,4 +59,4 @@ jobs:
           gh release create "$tag" "$RUNNER_TEMP/salu-preview.apk#Salu Android preview APK" \
             --target "$GITHUB_SHA" --prerelease \
             --title "Salu Android preview (${GITHUB_SHA:0:8})" \
-            --notes 'Android test build with the photo diary, recipe planner, groceries, and weekly check-in. The preview uses a separate app ID so it can be installed alongside earlier APKs. AI features use a user-supplied OpenAI API key.'
+            --notes 'Android test build with the photo diary, recipe planner, groceries, and weekly check-in. The preview uses a separate app ID so it can be installed alongside earlier APKs. AI features use Sign in with ChatGPT.'

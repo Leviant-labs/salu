@@ -42,8 +42,8 @@ fails the build if that is violated.
 
 ## Try the new flow
 
-1. For AI features, go to **Settings → OpenAI API key**. This uses your API
-   project's billing rather than ChatGPT subscription access.
+1. For AI features, go to **Settings → Continue with ChatGPT** and approve
+   plan usage in your browser. Eligible ChatGPT plan limits apply.
 2. In **Today → Log a meal**, take or choose a photo and type “This was my lunch
    today.” **Save with AI estimate** puts the photo under Lunch right away.
    Salu fills in estimates when they arrive, or offers a retry. Use the calendar

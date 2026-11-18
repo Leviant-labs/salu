@@ -726,7 +726,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                         label: const Text('Save with AI estimate'),
                       ),
                       const Text(
-                        'Save with AI sends the selected meal photo and any text above to OpenAI using your own API key. The meal is saved with any available estimates, or locally without estimates if OpenAI is unavailable.',
+                        'Save with AI sends the selected meal photo and any text above to OpenAI using your ChatGPT connection. The meal is saved with any available estimates, or locally without estimates if OpenAI is unavailable.',
                       ),
                     ],
                     OutlinedButton(
@@ -791,7 +791,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                       ),
                     ),
                     const Text(
-                      'Preview with AI sends this correction, the meal slot, and current food names and amounts to OpenAI using your own API key. No photos or meal notes are sent.',
+                      'Preview with AI sends this correction, the meal slot, and current food names and amounts to OpenAI using your ChatGPT connection. No photos or meal notes are sent.',
                     ),
                     OutlinedButton(
                       onPressed:

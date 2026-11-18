@@ -148,8 +148,15 @@ class TodayScreen extends ConsumerWidget {
                   : () => ref.read(diarySelectionProvider.notifier).state =
                       date.addDays(1)),
         ]),
-        Text('Meal diary', style: theme.textTheme.headlineMedium),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        Text('Meal diary',
+            style: theme.textTheme.headlineMedium
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text('A little more awareness, one meal at a time.',
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 20),
         FilledButton.icon(
           onPressed: () => _edit(context, ref, null),
           icon: const Icon(Icons.add_a_photo_outlined),
@@ -176,10 +183,29 @@ class TodayScreen extends ConsumerWidget {
         else if (!ready)
           const LinearProgressIndicator(),
         if (ready && profiles.isEmpty) ...[
-          const SizedBox(height: 16),
-          Text('Nothing logged yet', style: theme.textTheme.titleMedium),
-          const Text(
-              'Start with a meal photo, a description, or a food search.'),
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: theme.colorScheme.secondaryContainer,
+                      child: Icon(Icons.restaurant_outlined,
+                          color: theme.colorScheme.onSecondaryContainer),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Nothing logged yet',
+                        style: theme.textTheme.titleLarge),
+                    const SizedBox(height: 6),
+                    Text(
+                        'Start with a meal photo, a description, or a food search.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant)),
+                  ]),
+            ),
+          ),
         ],
         for (final slot in MealSlot.values)
           if (photos.any((meal) => meal.slot == slot)) ...[

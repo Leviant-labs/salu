@@ -239,6 +239,14 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (!widget.preferencesOnly) ...[
+              if (widget.firstRun) ...[
+                Text('Welcome to Salu',
+                    style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 8),
+                const Text(
+                    'Let’s make your diary and meal plans your own. Everything here is optional and can be changed later.'),
+                const SizedBox(height: 24),
+              ],
               const Text(
                 'Record your starting point and any goals you’ve chosen. No targets are calculated for you.',
               ),
@@ -358,7 +366,9 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                     ? 'Saving…'
                     : widget.preferencesOnly
                         ? 'Save preferences'
-                        : 'Save profile',
+                        : widget.firstRun
+                            ? 'Get started'
+                            : 'Save profile',
               ),
             ),
             if (widget.firstRun)
@@ -377,7 +387,11 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: Text(
-            widget.preferencesOnly ? 'Food preferences' : 'Planning profile',
+            widget.preferencesOnly
+                ? 'Food preferences'
+                : widget.firstRun
+                    ? 'Your setup'
+                    : 'Planning profile',
           ),
         ),
         body: _loading

@@ -119,27 +119,72 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
+  late Future<bool> _setup;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      try {
-        final profile = await ref.read(planningProfileStoreProvider).load();
-        if (mounted && !profile.onboarded && widget.currentPath == '/today') {
-          await context.push('${OnboardingScreen.routeName}?first=1');
-        }
-      } catch (_) {
-        // A corrupt or inaccessible profile cannot block diary use.
-      }
-    });
+    _setup = _loadSetup();
   }
+
+  Future<bool> _loadSetup() async =>
+      (await ref.read(planningProfileStoreProvider).load()).onboarded;
 
   static const _titles = ['Today', 'Food', 'Plan', 'Settings'];
 
   @override
   Widget build(BuildContext context) {
     final navigationShell = widget.navigationShell;
+    return FutureBuilder<bool>(
+      future: _setup,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Could not open your profile',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  const Text(
+                      'Try again, or continue to your diary and set up your profile later.',
+                      textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                      onPressed: () => setState(() {
+                            _setup = _loadSetup();
+                          }),
+                      child: const Text('Try again')),
+                  TextButton(
+                      onPressed: () => setState(() {
+                            _setup = Future.value(true);
+                          }),
+                      child: const Text('Continue to diary')),
+                ]),
+              ),
+            ),
+          );
+        }
+        if (snapshot.data != true) {
+          return OnboardingScreen(
+            store: ref.read(planningProfileStoreProvider),
+            firstRun: true,
+            onSaved: () => setState(() {
+              _setup = Future.value(true);
+            }),
+          );
+        }
+        return _home(navigationShell);
+      },
+    );
+  }
+
+  Widget _home(StatefulNavigationShell navigationShell) {
     return Scaffold(
       appBar: AppBar(title: Text(_titles[navigationShell.currentIndex])),
       body: navigationShell,

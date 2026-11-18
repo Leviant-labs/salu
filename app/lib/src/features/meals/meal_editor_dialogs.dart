@@ -286,7 +286,7 @@ class _MealLabelFormState extends State<_MealLabelForm> {
             else ...[
               Text('Amount eaten: ${mealPortionText(consumed)}.'),
               const Text(
-                  'Read with AI sends only this label photo to OpenAI using your API key.'),
+                  'Read with AI sends only this label photo to OpenAI using your ChatGPT connection.'),
               OutlinedButton(
                 onPressed: _reading ? null : _readLabel,
                 child: Text(_reading ? 'Reading label…' : 'Read label with AI'),

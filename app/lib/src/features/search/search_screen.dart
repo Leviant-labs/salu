@@ -545,34 +545,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Column(
       children: [
-        Wrap(spacing: 4, children: [
-          TextButton(onPressed: _openLibrary, child: const Text('Library')),
-          TextButton(
-              onPressed: () => _saveFood(), child: const Text('Add food')),
-          TextButton(onPressed: _barcode, child: const Text('Barcode')),
-          TextButton(onPressed: _leftovers, child: const Text('Leftovers')),
-          TextButton(
-              onPressed: _installPack, child: const Text('Install pack')),
-          TextButton(
-              onPressed: () async {
-                try {
-                  await createRecipe(
-                      context,
-                      RecipeLibrary(ref.read(foodRepositoryProvider),
-                          ref.read(documentStoreProvider)),
-                      'local-recipe:${ref.read(idGeneratorProvider).next()}');
-                } catch (_) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(this.context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Could not save that recipe.')));
-                  }
-                }
-              },
-              child: const Text('New recipe')),
-        ]),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: TextField(
             controller: _controller,
             textInputAction: TextInputAction.search,
@@ -588,10 +562,52 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         setState(() => _query = '');
                       },
                     ),
-              border: const OutlineInputBorder(),
             ),
             onChanged: (value) => setState(() => _query = value),
           ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            ActionChip(
+                avatar: const Icon(Icons.bookmark_border),
+                label: const Text('Library'),
+                onPressed: _openLibrary),
+            const SizedBox(width: 8),
+            ActionChip(
+                avatar: const Icon(Icons.add),
+                label: const Text('Add food'),
+                onPressed: () => _saveFood()),
+            const SizedBox(width: 8),
+            ActionChip(
+                avatar: const Icon(Icons.qr_code_scanner),
+                label: const Text('Barcode'),
+                onPressed: _barcode),
+            const SizedBox(width: 8),
+            ActionChip(label: const Text('Leftovers'), onPressed: _leftovers),
+            const SizedBox(width: 8),
+            ActionChip(
+                label: const Text('Install pack'), onPressed: _installPack),
+            const SizedBox(width: 8),
+            ActionChip(
+                label: const Text('New recipe'),
+                onPressed: () async {
+                  try {
+                    await createRecipe(
+                        context,
+                        RecipeLibrary(ref.read(foodRepositoryProvider),
+                            ref.read(documentStoreProvider)),
+                        'local-recipe:${ref.read(idGeneratorProvider).next()}');
+                  } catch (_) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Could not save that recipe.')));
+                    }
+                  }
+                }),
+          ]),
         ),
         Expanded(
           child: results.when(

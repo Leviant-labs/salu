@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../assistant/assistant.dart';
 import '../../providers.dart';
@@ -18,25 +20,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late Future<bool> _connection = saluAssistant.isConnected;
 
   Future<void> _connect() async {
-    final key = await showDialog<String>(
-      context: context,
-      builder: (_) => const _KeyDialog(),
-    );
-    if (!mounted || key == null) return;
-    await _update(() => saluAssistant.connect(key));
+    await _update(() async {
+      await saluAssistant.signInWithChatGpt();
+      const storage = FlutterSecureStorage();
+      if (await storage.read(key: 'salu.chatgpt.welcome') != 'shown' &&
+          mounted) {
+        await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+                  title: const Text('You’re using your ChatGPT plan'),
+                  content: const Text(
+                      'Eligible AI requests in Salu use your ChatGPT plan or credits. You can review and manage your usage in ChatGPT settings.'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Got it'))
+                  ],
+                ));
+        await storage.write(key: 'salu.chatgpt.welcome', value: 'shown');
+      }
+    });
   }
 
-  Future<void> _update(Future<void> Function() change) async {
-    setState(() => _connection = _changeConnection(change));
+  Future<void> _update(Future<void> Function() change,
+      {bool signingOut = false}) async {
+    setState(() {
+      _connection = _changeConnection(change, signingOut: signingOut);
+    });
   }
 
-  Future<bool> _changeConnection(Future<void> Function() change) async {
+  Future<bool> _changeConnection(Future<void> Function() change,
+      {required bool signingOut}) async {
     try {
       await change();
     } on SaluAssistantException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(signingOut
+              ? 'Signed out on this device. Remote revocation could not be confirmed; manage access in ChatGPT settings.'
+              : 'Could not connect ChatGPT. Check your browser and internet connection, and make sure plan permission was granted.'),
+        ));
       }
     }
     return saluAssistant.isConnected;
@@ -82,30 +110,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _Section(
           title: 'Salu assistant',
           subtitle:
-              'Connect an OpenAI API key to estimate meals and assist with corrections '
-              'and planning. Requests use your API project and may incur charges. '
-              'A ChatGPT subscription does not cover API usage.',
+              'Connect your ChatGPT account to estimate meals and help with planning. '
+              'Your eligible ChatGPT plan and its usage limits apply. Only the information you choose to send is shared.',
           children: [
             FutureBuilder<bool>(
               future: _connection,
-              builder: (context, snapshot) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.key_outlined),
-                title: Text(snapshot.data == true
-                    ? 'OpenAI key saved'
-                    : 'OpenAI API key'),
-                subtitle: snapshot.hasError
-                    ? const Text('Could not read secure storage')
-                    : null,
-                trailing: snapshot.connectionState != ConnectionState.done
-                    ? const CircularProgressIndicator()
-                    : TextButton(
-                        onPressed: snapshot.data == true
-                            ? () => _update(saluAssistant.disconnect)
-                            : _connect,
-                        child: Text(
-                            snapshot.data == true ? 'Disconnect' : 'Connect'),
-                      ),
+              builder: (context, snapshot) => Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (snapshot.connectionState != ConnectionState.done)
+                        const Row(children: [
+                          SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2)),
+                          SizedBox(width: 12),
+                          Expanded(
+                              child: Text('Connecting… check your browser'))
+                        ])
+                      else if (snapshot.data == true) ...[
+                        const ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.auto_awesome_outlined),
+                            title: Text('Using ChatGPT plan')),
+                        Wrap(spacing: 8, children: [
+                          OutlinedButton(
+                              onPressed: () => _update(saluAssistant.disconnect,
+                                  signingOut: true),
+                              child: const Text('Disconnect')),
+                          TextButton(
+                              onPressed: () => launchUrl(
+                                  Uri.parse(
+                                      'https://chatgpt.com/settings/usage'),
+                                  mode: LaunchMode.externalApplication),
+                              child: const Text('Manage usage')),
+                        ]),
+                      ] else ...[
+                        if (snapshot.hasError)
+                          const Text('Could not read secure storage.'),
+                        FilledButton.icon(
+                            onPressed: _connect,
+                            icon: const Icon(Icons.auto_awesome_outlined),
+                            label: const Text('Continue with ChatGPT')),
+                      ],
+                    ]),
               ),
             ),
           ],
@@ -137,44 +187,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
-}
-
-class _KeyDialog extends StatefulWidget {
-  const _KeyDialog();
-
-  @override
-  State<_KeyDialog> createState() => _KeyDialogState();
-}
-
-class _KeyDialogState extends State<_KeyDialog> {
-  final _key = TextEditingController();
-
-  @override
-  void dispose() {
-    _key.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Connect OpenAI'),
-        content: TextField(
-          controller: _key,
-          autofocus: true,
-          obscureText: true,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: const InputDecoration(labelText: 'OpenAI API key'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, _key.text.trim()),
-              child: const Text('Save key')),
-        ],
-      );
 }
 
 class _Section extends StatelessWidget {
