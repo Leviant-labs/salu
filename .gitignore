@@ -28,3 +28,8 @@ datasets/
 *.sqlite
 *.sqlite3
 *.db
+
+# Isolated agent workspaces
+.worktrees/
+.superpowers/
+
