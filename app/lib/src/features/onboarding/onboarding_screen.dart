@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
 import 'onboarding_pages.dart';
 import 'onboarding_wizard.dart';
 import 'planning_profile.dart';
@@ -11,6 +12,7 @@ class OnboardingScreen extends StatelessWidget {
     super.key,
     this.store,
     this.onboardingStore,
+    this.gate,
     this.onSaved,
     this.firstRun = false,
     this.openConnections,
@@ -20,6 +22,7 @@ class OnboardingScreen extends StatelessWidget {
 
   final PlanningProfileStore? store;
   final OnboardingStore? onboardingStore;
+  final DataWriteGate? gate;
   final VoidCallback? onSaved;
   final bool firstRun;
   final Future<void> Function(BuildContext)? openConnections;
@@ -29,6 +32,7 @@ class OnboardingScreen extends StatelessWidget {
     if (firstRun && onboardingStore != null) {
       return OnboardingWizard(
         store: onboardingStore!,
+        gate: gate,
         onCompleted: onSaved ?? () {},
         openConnections: openConnections,
       );

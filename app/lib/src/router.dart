@@ -32,6 +32,7 @@ final appRouter = GoRouter(
                 onboardingStore: state.uri.queryParameters.containsKey('first')
                     ? ref.watch(onboardingStoreProvider)
                     : null,
+                gate: ref.watch(dataWriteGateProvider),
                 onSaved: () =>
                     context.canPop() ? context.pop() : context.go('/today'),
                 firstRun: state.uri.queryParameters.containsKey('first'),
@@ -77,8 +78,11 @@ final appRouter = GoRouter(
                   profileStore: ref.watch(planningProfileStoreProvider),
                   assistant: assistant,
                   recipePlanning: RecipePlanning(
-                      RecipeLibrary(ref.watch(foodRepositoryProvider),
-                          ref.watch(documentStoreProvider)),
+                      RecipeLibrary(
+                        ref.watch(foodRepositoryProvider),
+                        ref.watch(documentStoreProvider),
+                        gate: ref.watch(dataWriteGateProvider),
+                      ),
                       assistant),
                   suggestions:
                       AssistantPlanSuggestionSource(assistant: assistant),
@@ -94,11 +98,15 @@ final appRouter = GoRouter(
                                       ref.read(activeMealEstimatesProvider),
                                   estimateStatusStore:
                                       ref.read(mealEstimateStatusStoreProvider),
+                                  gate: ref.read(dataWriteGateProvider),
+                                  fence: ref.read(operationFenceProvider),
                                   foods: ref.read(foodRepositoryProvider),
                                   date: date,
                                   today: ref.read(todayDiaryDateProvider),
                                   library: FoodLibrary(
-                                      ref.read(documentStoreProvider)),
+                                    ref.read(documentStoreProvider),
+                                    gate: ref.read(dataWriteGateProvider),
+                                  ),
                                   newId: ref.read(idGeneratorProvider).next,
                                   initialDescription: recipe.name,
                                   initialItems: recipe.snapshot(servings),

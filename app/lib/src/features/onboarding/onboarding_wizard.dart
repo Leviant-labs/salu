@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
 import 'onboarding_controller.dart';
 import 'onboarding_pages.dart';
 
@@ -11,12 +12,14 @@ class OnboardingWizard extends StatefulWidget {
     required this.store,
     required this.onCompleted,
     this.openConnections,
+    this.gate,
     super.key,
   });
 
   final OnboardingStore store;
   final VoidCallback onCompleted;
   final Future<void> Function(BuildContext)? openConnections;
+  final DataWriteGate? gate;
 
   @override
   State<OnboardingWizard> createState() => _OnboardingWizardState();
@@ -44,16 +47,17 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
   @override
   void initState() {
     super.initState();
-    _controller = OnboardingController(widget.store);
+    _controller = OnboardingController(widget.store, gate: widget.gate);
     _initLoad();
   }
 
   @override
   void didUpdateWidget(covariant OnboardingWizard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.store, widget.store)) {
+    if (!identical(oldWidget.store, widget.store) ||
+        !identical(oldWidget.gate, widget.gate)) {
       _controller.dispose();
-      _controller = OnboardingController(widget.store);
+      _controller = OnboardingController(widget.store, gate: widget.gate);
       _initLoad();
     }
   }

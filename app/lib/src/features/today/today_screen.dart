@@ -29,11 +29,16 @@ class TodayScreen extends ConsumerWidget {
         media: ref.read(managedMediaStoreProvider),
         activeEstimates: ref.read(activeMealEstimatesProvider),
         estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
+        gate: ref.read(dataWriteGateProvider),
+        fence: ref.read(operationFenceProvider),
         foods: ref.read(foodRepositoryProvider),
         date: ref.read(visibleDiaryDateProvider),
         today: today,
         initialCorrection: correction,
-        library: FoodLibrary(ref.read(documentStoreProvider)),
+        library: FoodLibrary(
+          ref.read(documentStoreProvider),
+          gate: ref.read(dataWriteGateProvider),
+        ),
         onLogged: (date) => ref.read(diarySelectionProvider.notifier).state =
             date == today ? null : date,
         onMutated: (_, __) {
@@ -242,6 +247,8 @@ class TodayScreen extends ConsumerWidget {
                     newId: ref.read(idGeneratorProvider).next,
                     activeEstimates: ref.read(activeMealEstimatesProvider),
                     statusStore: ref.read(mealEstimateStatusStoreProvider),
+                    fence: ref.read(operationFenceProvider),
+                    gate: ref.read(dataWriteGateProvider),
                   );
                   if (context.mounted) {
                     ref.invalidate(mealEstimateErrorProvider);

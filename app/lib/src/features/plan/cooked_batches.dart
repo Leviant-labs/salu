@@ -1,13 +1,19 @@
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
+
 typedef StoredBatch = ({String id, CookedRecipeBatch batch});
 
 class CookedBatches {
-  const CookedBatches(this.documents);
+  const CookedBatches(this.documents, {this.gate});
   final LocalDocumentStore documents;
+  final DataWriteGate? gate;
   static const _key = 'cooked-batches';
   static const int currentVersion = 1;
+
+  Future<T> _runWrite<T>(Future<T> Function() work) =>
+      gate != null ? gate!.runWrite(work) : work();
 
   Future<List<StoredBatch>> available() async {
     final record = await documents.read(_key);
@@ -38,7 +44,8 @@ class CookedBatches {
             _encodeRow(rows[i].id, rows[i].batch, existingRow: rawMaps[i]),
         ],
       };
-      if (!await documents.put(_key, record.revision, migrated)) {
+      if (!await _runWrite(
+          () => documents.put(_key, record.revision, migrated))) {
         final latest = await documents.read(_key);
         if (latest != null) activeRows = _decodeAll(latest.data);
       }
@@ -61,19 +68,19 @@ class CookedBatches {
             for (final raw in old.data['batches'] as List? ?? const [])
               Map<String, dynamic>.from(raw as Map),
           ];
-    if (!await documents.put(_key, old?.revision ?? 0, {
-      ...?old?.data,
-      'version': currentVersion,
-      'batches': [
-        for (var i = 0; i < existing.length; i++)
-          _encodeRow(
-            existing[i].id,
-            existing[i].batch,
-            existingRow: existingRaw[i],
-          ),
-        _encodeRow(id, batch),
-      ],
-    })) {
+    if (!await _runWrite(() => documents.put(_key, old?.revision ?? 0, {
+          ...?old?.data,
+          'version': currentVersion,
+          'batches': [
+            for (var i = 0; i < existing.length; i++)
+              _encodeRow(
+                existing[i].id,
+                existing[i].batch,
+                existingRow: existingRaw[i],
+              ),
+            _encodeRow(id, batch),
+          ],
+        }))) {
       throw StateError('Batch list changed');
     }
   }
@@ -116,11 +123,11 @@ class CookedBatches {
           'recipe': encodeRecipe(batch.recipe),
           'remainingFraction': nextRemaining,
         };
-        if (!await documents.put(_key, old.revision, {
-          ...old.data,
-          'version': currentVersion,
-          'batches': rawEntries,
-        })) {
+        if (!await _runWrite(() => documents.put(_key, old.revision, {
+              ...old.data,
+              'version': currentVersion,
+              'batches': rawEntries,
+            }))) {
           throw StateError('Batch amount changed');
         }
         return true;

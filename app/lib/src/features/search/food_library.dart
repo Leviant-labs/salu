@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
 import '../meals/meal_editor_data.dart';
 import '../meals/meal_editor_dialogs.dart';
 import '../plan/recipe_library.dart';
@@ -15,10 +16,14 @@ typedef SavedFood = ({
 typedef SavedMeal = ({String id, String name, List<PhotoMealItem> items});
 
 class FoodLibrary {
-  const FoodLibrary(this.documents);
+  const FoodLibrary(this.documents, {this.gate});
   final LocalDocumentStore documents;
+  final DataWriteGate? gate;
   static const _key = 'food-library';
   static const int currentVersion = 1;
+
+  Future<T> _runWrite<T>(Future<T> Function() work) =>
+      gate != null ? gate!.runWrite(work) : work();
 
   Future<List<SavedFood>> foods() async =>
       (await _loadValidated())?.foods ?? const [];
@@ -94,7 +99,8 @@ class FoodLibrary {
         ...record.data,
         'version': currentVersion,
       };
-      if (await documents.put(_key, record.revision, migrated)) {
+      if (await _runWrite(
+          () => documents.put(_key, record.revision, migrated))) {
         return (
           revision: record.revision + 1,
           data: Map<String, dynamic>.from(migrated),
@@ -238,11 +244,11 @@ class FoodLibrary {
       Map<String, Object?> Function(Map<String, dynamic>) change) async {
     final old = await _loadValidated();
     final base = old?.data ?? const <String, dynamic>{};
-    if (!await documents.put(_key, old?.revision ?? 0, {
-      ...base,
-      ...change(base),
-      'version': currentVersion,
-    })) {
+    if (!await _runWrite(() => documents.put(_key, old?.revision ?? 0, {
+          ...base,
+          ...change(base),
+          'version': currentVersion,
+        }))) {
       throw StateError('Food library changed');
     }
   }

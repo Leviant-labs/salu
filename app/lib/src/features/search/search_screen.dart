@@ -25,7 +25,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
   String _query = '';
   Set<String> _favorites = const {};
-  FoodLibrary get _library => FoodLibrary(ref.read(documentStoreProvider));
+  FoodLibrary get _library => FoodLibrary(
+        ref.read(documentStoreProvider),
+        gate: ref.read(dataWriteGateProvider),
+      );
 
   @override
   void initState() {
@@ -57,6 +60,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         media: ref.read(managedMediaStoreProvider),
         activeEstimates: ref.read(activeMealEstimatesProvider),
         estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
+        gate: ref.read(dataWriteGateProvider),
+        fence: ref.read(operationFenceProvider),
         foods: ref.read(foodRepositoryProvider),
         date: ref.read(todayDiaryDateProvider),
         newId: ref.read(idGeneratorProvider).next,
@@ -98,7 +103,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Future<void> _openLibrary() async {
     final repo = ref.read(photoMealRepositoryProvider);
     final recipes = RecipeLibrary(
-        ref.read(foodRepositoryProvider), ref.read(documentStoreProvider));
+      ref.read(foodRepositoryProvider),
+      ref.read(documentStoreProvider),
+      gate: ref.read(dataWriteGateProvider),
+    );
     try {
       final foods = await _library.foods();
       final meals = await _library.meals();
@@ -280,7 +288,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       child: const Text('Save batch'))
                 ]));
     if (!mounted || confirmed != true) return;
-    await CookedBatches(ref.read(documentStoreProvider)).add(
+    await CookedBatches(
+      ref.read(documentStoreProvider),
+      gate: ref.read(dataWriteGateProvider),
+    ).add(
         ref.read(idGeneratorProvider).next(),
         CookedRecipeBatch(
             recipe: recipe,
@@ -293,7 +304,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Future<void> _leftovers() async {
-    final store = CookedBatches(ref.read(documentStoreProvider));
+    final store = CookedBatches(
+      ref.read(documentStoreProvider),
+      gate: ref.read(dataWriteGateProvider),
+    );
     try {
       final batches = await store.available();
       if (!mounted) return;
@@ -600,8 +614,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   try {
                     await createRecipe(
                         context,
-                        RecipeLibrary(ref.read(foodRepositoryProvider),
-                            ref.read(documentStoreProvider)),
+                        RecipeLibrary(
+                          ref.read(foodRepositoryProvider),
+                          ref.read(documentStoreProvider),
+                          gate: ref.read(dataWriteGateProvider),
+                        ),
                         'local-recipe:${ref.read(idGeneratorProvider).next()}');
                   } catch (_) {
                     if (mounted) {

@@ -7,6 +7,8 @@ import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
+import '../../assistant/operation_fence.dart';
+import '../../data_transfer/data_write_gate.dart';
 import '../../media/managed_media_store.dart';
 import '../search/food_library.dart';
 import 'meal_editor_ai.dart';
@@ -29,6 +31,8 @@ class MealEditor extends StatelessWidget {
     this.media,
     this.activeEstimates,
     this.estimateStatusStore,
+    this.gate,
+    this.fence,
     this.initialDescription = '',
     this.initialFood,
     this.today,
@@ -47,6 +51,8 @@ class MealEditor extends StatelessWidget {
   final ManagedMediaStore? media;
   final ActiveMealEstimates? activeEstimates;
   final MealEstimateStatusStore? estimateStatusStore;
+  final DataWriteGate? gate;
+  final OperationFence? fence;
   final FoodRepository foods;
   final DiaryDate date;
   final String Function() newId;
@@ -513,7 +519,10 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       );
       final paths = _protectForWrite(meal);
       final repository = editor.repository;
-      if (!await repository.saveNew(meal)) {
+      final savedNew = await (editor.gate != null
+          ? editor.gate!.runWrite(() => repository.saveNew(meal))
+          : repository.saveNew(meal));
+      if (!savedNew) {
         final matching = (await repository.listFor(
           meal.date,
         ))
@@ -541,6 +550,8 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
           newId: editor.newId,
           activeEstimates: editor.activeEstimates,
           statusStore: editor.estimateStatusStore,
+          fence: editor.fence,
+          gate: editor.gate,
         ));
       }
       if (mounted) editor.onLogged?.call(meal.date);
@@ -605,19 +616,22 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
             _photoPath == original.photoPath &&
             _items.length == original.items.length &&
             _items.indexed.every((e) => e.$2 == original.items[e.$1]);
-        final result = onlyDateChanged
-            ? await mutations.apply(MoveMeal(
+        Future<MealMutationResult> applyMutation() => onlyDateChanged
+            ? mutations.apply(MoveMeal(
                 requestId: requestId,
                 mealId: original.id,
                 expectedRevision: original.revision,
                 date: _date,
                 today: today,
               ))
-            : await mutations.apply(ReviseMeal(
+            : mutations.apply(ReviseMeal(
                 requestId: requestId,
                 meal: updated,
                 expectedRevision: original.revision,
               ));
+        final result = await (widget.editor.gate != null
+            ? widget.editor.gate!.runWrite(applyMutation)
+            : applyMutation());
         switch (result.status) {
           case MutationStatus.applied:
           case MutationStatus.alreadyApplied:
@@ -646,7 +660,11 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
         return;
       }
 
-      if (await widget.editor.repository.replace(updated, original.revision)) {
+      final replaced = await (widget.editor.gate != null
+          ? widget.editor.gate!.runWrite(() =>
+              widget.editor.repository.replace(updated, original.revision))
+          : widget.editor.repository.replace(updated, original.revision));
+      if (replaced) {
         widget.editor.onMutated?.call(original.date, _date);
         _saved('Meal updated.');
       } else {
@@ -696,11 +714,14 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     _start('Deleting meal…');
     try {
       final requestId = _deleteRequestId ??= widget.editor.newId();
-      final result = await mutations.apply(DeleteMeal(
-        requestId: requestId,
-        mealId: original.id,
-        expectedRevision: original.revision,
-      ));
+      Future<MealMutationResult> applyDelete() => mutations.apply(DeleteMeal(
+            requestId: requestId,
+            mealId: original.id,
+            expectedRevision: original.revision,
+          ));
+      final result = await (widget.editor.gate != null
+          ? widget.editor.gate!.runWrite(applyDelete)
+          : applyDelete());
       switch (result.status) {
         case MutationStatus.applied:
         case MutationStatus.alreadyApplied:
@@ -709,6 +730,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
           final messenger = ScaffoldMessenger.of(context);
           final onMutated = widget.editor.onMutated;
           final newId = widget.editor.newId;
+          final gate = widget.editor.gate;
           onMutated?.call(original.date, original.date);
           Navigator.of(context).pop();
           messenger.showSnackBar(SnackBar(
@@ -725,6 +747,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                       newId: newId,
                       mealDate: original.date,
                       onMutated: onMutated,
+                      gate: gate,
                     ),
                   ),
           ));
@@ -755,12 +778,15 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     required String Function() newId,
     required DiaryDate mealDate,
     required void Function(DiaryDate oldDate, DiaryDate newDate)? onMutated,
+    DataWriteGate? gate,
   }) async {
     try {
-      final undone = await mutations.apply(UndoMeal(
-        requestId: newId(),
-        undoToken: undoToken,
-      ));
+      Future<MealMutationResult> applyUndo() => mutations.apply(UndoMeal(
+            requestId: newId(),
+            undoToken: undoToken,
+          ));
+      final undone =
+          await (gate != null ? gate.runWrite(applyUndo) : applyUndo());
       switch (undone.status) {
         case MutationStatus.applied:
         case MutationStatus.alreadyApplied:

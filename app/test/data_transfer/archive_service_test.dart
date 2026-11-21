@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:salu/src/assistant/credential_store.dart';
 import 'package:salu/src/assistant/operation_fence.dart';
+import 'package:salu/src/data_transfer/archive_codec.dart';
+import 'package:salu/src/data_transfer/archive_crypto.dart';
 import 'package:salu/src/data_transfer/archive_service.dart';
 import 'package:salu/src/data_transfer/data_write_gate.dart';
 import 'package:salu/src/media/managed_media_store.dart';
@@ -394,7 +396,8 @@ void main() {
     expect(mediaFiles, hasLength(1));
   });
 
-  test('interrupted credential cleanup leaves marker and resumes cleanly',
+  test(
+      'interrupted credential cleanup leaves marker in durable markerDirectory, still fires onRestored, and resumes cleanly',
       () async {
     final tempRoot = await Directory.systemTemp.createTemp('salu_arch_cred_');
     addTearDown(() => tempRoot.delete(recursive: true));
@@ -406,7 +409,10 @@ void main() {
     final creds = _FakeCredentialStore();
     await creds.write('openai', 'token');
     creds.failNextClear = true;
+    var restoredCallbacks = 0;
 
+    final markerDir =
+        Directory('${tempRoot.path}${Platform.pathSeparator}durable_support');
     final service = ArchiveService(
       data: UserDataRepository(db),
       media: media,
@@ -415,23 +421,91 @@ void main() {
       gate: DataWriteGate(),
       stagingDirectory: () async =>
           Directory('${tempRoot.path}${Platform.pathSeparator}stage'),
+      markerDirectory: () async => markerDir,
+      onRestored: () => restoredCallbacks++,
     );
 
     final encrypted =
         await service.export(password: password, includeMedia: false);
     final preview = await service.inspect(encrypted, password);
 
-    // Restore commits DB, fails credential clear, leaves marker
+    // Restore commits DB, fails credential clear, leaves marker in durable dir,
+    // and still invokes onRestored because DB commit succeeded.
     await expectLater(service.restore(preview), throwsStateError);
     expect(await creds.read('openai'), 'token');
+    expect(restoredCallbacks, 1);
+    expect(
+      await File(
+        '${markerDir.path}${Platform.pathSeparator}pending-credential-cleanup.marker',
+      ).exists(),
+      isTrue,
+    );
 
     // Resuming completes the credential wipe and removes marker
     await service.resumePendingCredentialCleanup();
     expect(await creds.read('openai'), isNull);
     expect(creds.clearCalls, 2);
+    expect(
+      await File(
+        '${markerDir.path}${Platform.pathSeparator}pending-credential-cleanup.marker',
+      ).exists(),
+      isFalse,
+    );
 
     // Calling resume again is a no-op
     await service.resumePendingCredentialCleanup();
     expect(creds.clearCalls, 2);
+  });
+
+  test('inspect rejects archive with broken foreign key before restore',
+      () async {
+    final tempRoot = await Directory.systemTemp.createTemp('salu_arch_fk_');
+    addTearDown(() => tempRoot.delete(recursive: true));
+
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final media = await createMediaStore(tempRoot, 'm');
+    final service = ArchiveService(
+      data: UserDataRepository(db),
+      media: media,
+      fence: OperationFence(),
+      credentials: _FakeCredentialStore(),
+      gate: DataWriteGate(),
+      stagingDirectory: () async =>
+          Directory('${tempRoot.path}${Platform.pathSeparator}stage'),
+    );
+
+    final brokenSnapshot = UserDataSnapshot(
+      entries: const [],
+      entryItems: [
+        {
+          'id': 'item-1',
+          'entryId': 'missing-entry',
+          'foodId': null,
+          'name': 'Apple',
+          'grams': 100.0,
+          'nutrientsJson': '{}',
+          'position': 0,
+        },
+      ],
+      meals: const [],
+      documents: const [],
+      mutations: const [],
+    );
+
+    final zipBytes = encodeArchive(
+      ArchiveContents(
+        records: brokenSnapshot.toJson(),
+        media: const {},
+        catalogueManifest: const {},
+        mediaOmitted: true,
+      ),
+    );
+    final encrypted = await encryptArchive(zipBytes, password);
+
+    await expectLater(
+      service.inspect(encrypted, password),
+      throwsA(isA<FormatException>()),
+    );
   });
 }

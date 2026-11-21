@@ -53,6 +53,7 @@ final class ArchiveService {
     required CredentialStore credentials,
     required DataWriteGate gate,
     required Future<Directory> Function() stagingDirectory,
+    Future<Directory> Function()? markerDirectory,
     VoidCallback? onRestored,
     Future<String> Function(XFile image)? stageMediaOverride,
   })  : _data = data,
@@ -61,6 +62,7 @@ final class ArchiveService {
         _credentials = credentials,
         _gate = gate,
         _stagingDirectory = stagingDirectory,
+        _markerDirectory = markerDirectory ?? stagingDirectory,
         _onRestored = onRestored,
         _stageMediaOverride = stageMediaOverride;
 
@@ -72,6 +74,7 @@ final class ArchiveService {
   final CredentialStore _credentials;
   final DataWriteGate _gate;
   final Future<Directory> Function() _stagingDirectory;
+  final Future<Directory> Function() _markerDirectory;
   final VoidCallback? _onRestored;
   final Future<String> Function(XFile image)? _stageMediaOverride;
   int _stageCounter = 0;
@@ -144,6 +147,7 @@ final class ArchiveService {
         await decryptFileToFile(inFile, plainZip, password);
         final contents = await decodeArchiveFromFile(plainZip);
         final snapshot = UserDataSnapshot.fromJson(contents.records);
+        UserDataRepository.validate(snapshot);
 
         final validatedDir =
             await Directory('$stagePath${Platform.pathSeparator}validated')
@@ -274,25 +278,31 @@ final class ArchiveService {
         flush: true,
       );
 
+      var dbCommitted = false;
       try {
-        await _data.replace(remappedSnapshot);
-      } catch (_) {
-        // DB replace failed: original DB & media are intact. Remove the marker
-        // and clean only the newly staged media files.
+        try {
+          await _data.replace(remappedSnapshot);
+          dbCommitted = true;
+        } catch (_) {
+          // DB replace failed: original DB & media are intact. Remove the marker
+          // and clean only the newly staged media files.
+          await _deleteFileQuietly(marker);
+          await _cleanupStagedMedia(newlyStagedRefs);
+          rethrow;
+        }
+
+        // DB commit succeeded! Clean staging dir.
+        await _deleteDirQuietly(validatedDir.parent);
+
+        // Clear credentials; if this throws, the marker remains on disk so
+        // resumePendingCredentialCleanup() retries before allowing AI use.
+        await _credentials.clearSaluCredentials();
         await _deleteFileQuietly(marker);
-        await _cleanupStagedMedia(newlyStagedRefs);
-        rethrow;
+      } finally {
+        if (dbCommitted) {
+          _onRestored?.call();
+        }
       }
-
-      // DB commit succeeded! Clean staging dir.
-      await _deleteDirQuietly(validatedDir.parent);
-
-      // Clear credentials; if this throws, the marker remains on disk so
-      // resumePendingCredentialCleanup() retries before allowing AI use.
-      await _credentials.clearSaluCredentials();
-      await _deleteFileQuietly(marker);
-
-      _onRestored?.call();
     });
   }
 
@@ -306,7 +316,7 @@ final class ArchiveService {
   }
 
   Future<File> _cleanupMarkerFile() async {
-    final root = await _stagingDirectory();
+    final root = await _markerDirectory();
     return File('${root.path}${Platform.pathSeparator}$_cleanupMarkerName');
   }
 
@@ -337,6 +347,27 @@ Set<String> _collectReferencedMediaRefs(UserDataSnapshot snapshot) {
     }
   }
 
+  void addFromPhotoMealJson(Object? raw) {
+    if (raw is! String) return;
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return;
+    addIfManaged(decoded['photoPath']);
+    final items = decoded['items'];
+    if (items is List) {
+      for (final item in items) {
+        if (item is Map) {
+          addIfManaged(item['labelPath']);
+          final labelPaths = item['labelPaths'];
+          if (labelPaths is List) {
+            for (final p in labelPaths) {
+              addIfManaged(p);
+            }
+          }
+        }
+      }
+    }
+  }
+
   for (final meal in snapshot.meals) {
     addIfManaged(meal['photoPath']);
     final itemsJson = meal['itemsJson'];
@@ -355,6 +386,15 @@ Set<String> _collectReferencedMediaRefs(UserDataSnapshot snapshot) {
           }
         }
       }
+    }
+  }
+
+  final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+  for (final mut in snapshot.mutations) {
+    final expiresAt = mut['undoExpiresAtMs'];
+    if (expiresAt is int && expiresAt > nowMs) {
+      addFromPhotoMealJson(mut['beforeJson']);
+      addFromPhotoMealJson(mut['afterJson']);
     }
   }
   return refs;

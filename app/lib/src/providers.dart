@@ -39,6 +39,7 @@ final archiveServiceProvider = Provider<ArchiveService>(
     credentials: ref.watch(credentialStoreProvider),
     gate: ref.watch(dataWriteGateProvider),
     stagingDirectory: getTemporaryDirectory,
+    markerDirectory: getApplicationSupportDirectory,
     onRestored: () {
       ref.invalidate(todayMealsProvider);
       ref.invalidate(todayEntriesProvider);

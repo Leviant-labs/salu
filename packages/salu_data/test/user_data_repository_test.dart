@@ -264,13 +264,35 @@ void main() {
         {
           'id': 'planning-profile',
           'revision': 1,
-          'payload': jsonEncode({'version': 1, 'targetKcal': -500}),
+          'payload': jsonEncode({'version': 1, 'startingWeight': -70.0}),
         },
       ],
       mutations: const [],
     );
+    expect(
+      () => UserDataRepository.validate(badProfile),
+      throwsA(isA<FormatException>()),
+    );
     await expectLater(
       UserDataRepository(db).replace(badProfile),
+      throwsA(isA<FormatException>()),
+    );
+
+    final badProfileEnum = UserDataSnapshot(
+      entries: const [],
+      entryItems: const [],
+      meals: const [],
+      documents: [
+        {
+          'id': 'planning-profile',
+          'revision': 1,
+          'payload': jsonEncode({'version': 1, 'weightUnit': 'stones'}),
+        },
+      ],
+      mutations: const [],
+    );
+    expect(
+      () => UserDataRepository.validate(badProfileEnum),
       throwsA(isA<FormatException>()),
     );
 

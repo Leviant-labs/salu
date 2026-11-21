@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/src/data_transfer/data_write_gate.dart';
+import 'package:salu/src/features/search/food_library.dart';
+import 'package:salu_data/salu_data.dart';
 
 void main() {
   test('admitted writes drain before exclusive runs and new writes reject',
@@ -72,5 +74,22 @@ void main() {
     });
 
     expect(gate.blocked, isFalse);
+  });
+
+  test('blocks library writes while exclusive is active', () async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final gate = DataWriteGate();
+    final library = FoodLibrary(LocalDocumentStore(db), gate: gate);
+
+    await gate.exclusive(() async {
+      await expectLater(
+        library.toggleFavorite('fdc-1'),
+        throwsA(isA<DataWriteBlockedException>()),
+      );
+    });
+
+    await library.toggleFavorite('fdc-1');
+    expect(await library.favorites(), contains('fdc-1'));
   });
 }

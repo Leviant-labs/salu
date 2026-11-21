@@ -3,16 +3,22 @@ import 'package:salu_data/salu_data.dart';
 import 'package:salu_data/salu_data.dart' as salu_data
     show decodeRecipe, encodeRecipe;
 
+import '../../data_transfer/data_write_gate.dart';
+
 /// App-authored recipes on top of versioned edible-food reference records.
 /// Where an ingredient is cooked, the shopping amount is for the ready-cooked
 /// form. The app must not infer dry amounts from cooked weights.
 class RecipeLibrary {
-  const RecipeLibrary(this.foods, this.documents);
+  const RecipeLibrary(this.foods, this.documents, {this.gate});
   final FoodRepository foods;
   final LocalDocumentStore documents;
+  final DataWriteGate? gate;
 
   static const _key = 'recipe-library';
   static const int currentVersion = 1;
+
+  Future<T> _runWrite<T>(Future<T> Function() work) =>
+      gate != null ? gate!.runWrite(work) : work();
 
   Future<List<RecipeVersion>> load() async {
     final local = await documents.read(_key);
@@ -69,7 +75,8 @@ class RecipeLibrary {
           for (final recipe in decoded) encodeRecipe(recipe),
         ],
       };
-      if (!await documents.put(_key, local.revision, migrated)) {
+      if (!await _runWrite(
+          () => documents.put(_key, local.revision, migrated))) {
         final latest = await documents.read(_key);
         if (latest != null) return _decodeUserRecipes(latest.data);
       }
@@ -102,14 +109,14 @@ class RecipeLibrary {
         .any((row) => row.id == recipe.id && row.version == recipe.version)) {
       throw StateError('This recipe version already exists');
     }
-    if (!await documents.put(_key, previous?.revision ?? 0, {
-      ...?previous?.data,
-      'version': currentVersion,
-      'recipes': [
-        for (final row in existing) encodeRecipe(row),
-        encodeRecipe(recipe),
-      ],
-    })) {
+    if (!await _runWrite(() => documents.put(_key, previous?.revision ?? 0, {
+          ...?previous?.data,
+          'version': currentVersion,
+          'recipes': [
+            for (final row in existing) encodeRecipe(row),
+            encodeRecipe(recipe),
+          ],
+        }))) {
       throw StateError('The recipe library changed. Try again.');
     }
   }

@@ -276,6 +276,14 @@ class UserDataRepository {
         );
       });
 
+  /// Validates [snapshot] completely without mutating the database.
+  ///
+  /// Throws [FormatException] on any schema, type, uniqueness, foreign-key,
+  /// nutrient-state, diary-date, or document-format violation.
+  static void validate(UserDataSnapshot snapshot) {
+    _validateSnapshot(snapshot);
+  }
+
   /// Validates [snapshot] completely and replaces all user tables inside one
   /// atomic transaction.
   ///
@@ -644,23 +652,12 @@ void _validateDocumentPayload(String id, String payload) {
   } else if (id.startsWith('week:')) {
     _parseDiaryDate(id.substring('week:'.length), 'document "$id"');
   } else if (id == 'planning-profile') {
-    for (final key in const <String>[
-      'targetKcal',
-      'proteinG',
-      'carbsG',
-      'fatG',
-      'fiberG',
-      'weightKg',
-      'heightCm',
-    ]) {
-      final value = map[key];
-      if (value != null) {
-        if (value is! num || !value.isFinite || value <= 0) {
-          throw FormatException(
-            'Invalid numeric value for $key in document "$id"',
-          );
-        }
-      }
+    try {
+      PlanningProfile.fromJson(map);
+    } on FormatException catch (e) {
+      throw FormatException('Invalid planning-profile document: ${e.message}');
+    } on ArgumentError catch (e) {
+      throw FormatException('Invalid planning-profile document: ${e.message}');
     }
   }
 }
