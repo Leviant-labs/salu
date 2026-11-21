@@ -770,4 +770,32 @@ void main() {
     expect(find.text('Back'), findsOneWidget);
     expect(find.text('Skip this step'), findsOneWidget);
   });
+
+  testWidgets('disposing wizard during an in-flight write does not throw',
+      (tester) async {
+    final interceptor = _SlowWriteInterceptor();
+    final db = AppDatabase(NativeDatabase.memory().interceptWith(interceptor));
+    addTearDown(db.close);
+    final store = OnboardingStore(LocalDocumentStore(db));
+
+    await tester.pumpWidget(
+      MaterialApp(home: OnboardingWizard(store: store, onCompleted: () {})),
+    );
+    await tester.pumpAndSettle();
+
+    final gate = Completer<void>();
+    interceptor.writeGate = gate;
+
+    await tester.tap(find.text('Next'));
+    await tester.pump();
+
+    // Unmount OnboardingWizard while store.save() is still awaiting SQLite.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 }

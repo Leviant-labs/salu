@@ -12,128 +12,186 @@ class OnboardingController extends ChangeNotifier {
   bool busy = false;
   bool loaded = false;
   String? error;
+  bool _disposed = false;
+
+  void _notify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> load() async {
-    if (busy) return;
+    if (_disposed || busy) return;
     busy = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
-      draft = await store.load();
+      final loadedDraft = await store.load();
+      if (_disposed) return;
+      draft = loadedDraft;
       loaded = true;
     } catch (_) {
-      error = 'Could not load saved setup. Try again.';
+      if (!_disposed) {
+        error = 'Could not load saved setup. Try again.';
+      }
     } finally {
-      busy = false;
-      notifyListeners();
+      if (!_disposed) {
+        busy = false;
+        _notify();
+      }
     }
   }
 
   Future<bool> next(PlanningProfile profile) async {
-    if (busy || draft.step == OnboardingStep.review) return false;
+    if (_disposed || busy || draft.step == OnboardingStep.review) return false;
     busy = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
       final step = OnboardingStep.values[draft.step.index + 1];
       final candidate = draft.copyWith(step: step, profile: profile);
-      if (!await store.save(candidate)) {
+      final saved = await store.save(candidate);
+      if (_disposed) return false;
+      if (!saved) {
         error = 'Setup changed. Reopen the latest step and try again.';
         return false;
       }
-      draft = await store.load();
+      final reloaded = await store.load();
+      if (_disposed) return false;
+      draft = reloaded;
       return true;
     } catch (_) {
-      error = 'Could not save progress. Your answers are still here.';
+      if (!_disposed) {
+        error = 'Could not save progress. Your answers are still here.';
+      }
       return false;
     } finally {
-      busy = false;
-      notifyListeners();
+      if (!_disposed) {
+        busy = false;
+        _notify();
+      }
     }
   }
 
   Future<bool> back() async {
-    if (busy || draft.step == OnboardingStep.welcome) return false;
+    if (_disposed || busy || draft.step == OnboardingStep.welcome) return false;
     busy = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
       final step = OnboardingStep.values[draft.step.index - 1];
       final candidate = draft.copyWith(step: step);
-      if (!await store.save(candidate)) {
+      final saved = await store.save(candidate);
+      if (_disposed) return false;
+      if (!saved) {
         error = 'Setup changed. Reopen the latest step and try again.';
         return false;
       }
-      draft = await store.load();
+      final reloaded = await store.load();
+      if (_disposed) return false;
+      draft = reloaded;
       return true;
     } catch (_) {
-      error = 'Could not save progress. Your answers are still here.';
+      if (!_disposed) {
+        error = 'Could not save progress. Your answers are still here.';
+      }
       return false;
     } finally {
-      busy = false;
-      notifyListeners();
+      if (!_disposed) {
+        busy = false;
+        _notify();
+      }
     }
   }
 
   Future<bool> skipStep() async {
-    if (busy || draft.step == OnboardingStep.review) return false;
+    if (_disposed || busy || draft.step == OnboardingStep.review) return false;
     busy = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
       final step = OnboardingStep.values[draft.step.index + 1];
       final candidate = draft.copyWith(step: step);
-      if (!await store.save(candidate)) {
+      final saved = await store.save(candidate);
+      if (_disposed) return false;
+      if (!saved) {
         error = 'Setup changed. Reopen the latest step and try again.';
         return false;
       }
-      draft = await store.load();
+      final reloaded = await store.load();
+      if (_disposed) return false;
+      draft = reloaded;
       return true;
     } catch (_) {
-      error = 'Could not save progress. Your answers are still here.';
+      if (!_disposed) {
+        error = 'Could not save progress. Your answers are still here.';
+      }
       return false;
     } finally {
-      busy = false;
-      notifyListeners();
+      if (!_disposed) {
+        busy = false;
+        _notify();
+      }
     }
   }
 
   Future<bool> finish() async {
-    if (busy || draft.step != OnboardingStep.review) return false;
+    if (_disposed || busy || draft.step != OnboardingStep.review) return false;
     busy = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
-      if (!await store.complete(draft)) {
+      final completed = await store.complete(draft);
+      if (_disposed) return false;
+      if (!completed) {
         error = 'Setup changed. Reopen the latest step and try again.';
         return false;
       }
-      draft = await store.load();
+      final reloaded = await store.load();
+      if (_disposed) return false;
+      draft = reloaded;
       return true;
     } catch (_) {
-      error = 'Could not finish setup. Your answers are still here.';
+      if (!_disposed) {
+        error = 'Could not finish setup. Your answers are still here.';
+      }
       return false;
     } finally {
-      busy = false;
-      notifyListeners();
+      if (!_disposed) {
+        busy = false;
+        _notify();
+      }
     }
   }
 
   Future<bool> skipSetup() async {
-    if (busy) return false;
+    if (_disposed || busy) return false;
     busy = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
       await store.skip();
-      draft = await store.load();
+      if (_disposed) return false;
+      final reloaded = await store.load();
+      if (_disposed) return false;
+      draft = reloaded;
       return true;
     } catch (_) {
-      error = 'Could not skip setup. Please try again.';
+      if (!_disposed) {
+        error = 'Could not skip setup. Please try again.';
+      }
       return false;
     } finally {
-      busy = false;
-      notifyListeners();
+      if (!_disposed) {
+        busy = false;
+        _notify();
+      }
     }
   }
 }
