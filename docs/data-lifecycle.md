@@ -35,3 +35,19 @@ When recovered photos are present in the meal editor, Salu presents an explicit 
 - **Media retention during undo:** `MealMutationRepository.referencedMedia` includes both live `photo_meals` media and unexpired deletion snapshots so media cleanup never deletes photos needed for an active undo window.
 - **Batch inventory non-replenishment:** Deleting a meal logged from a cooked batch does not replenish remaining `cooked-batches` stock; the delete confirmation explicitly discloses this.
 - **Legacy entries:** Legacy single-food `log_entries` rows remain readable in the diary and are explicitly outside photo-meal move/delete controls.
+
+## Versioned Encrypted User Archives (`SALU1`)
+
+Salu exports portable, authenticated encrypted backups using a versioned ZIP payload wrapped in a `SALU1` AEAD envelope:
+
+- **Envelope & Cryptography:** `magic ("SALU1", 5 B) || salt (16 B) || nonce (12 B) || ciphertext || tag (16 B)`. Keys are derived with **PBKDF2-HMAC-SHA256** at **600,000 iterations** (256-bit key) using a fresh `Random.secure()` salt and nonce per export. Payloads are encrypted with **AES-256-GCM** authenticating the 33-byte header (`magic || salt || nonce`) as Associated Data (AAD). Passwords must be at least **12 characters**; malformed headers, wrong magic, short passwords, or over-limit files are rejected before KDF runs.
+- **Allowlisted Archive Contents (Format 1):** Only `manifest.json` (format `1`, schema version `4`, `recordsFormat: 1`, `mediaOmitted`, `catalogueManifest`, counts, and per-file sizes + SHA-256 hashes), `records.json` (`format: 1`), and `media/<opaque-id>` (`^[A-Za-z0-9_-]{1,128}$`) are permitted. Path traversal (`..`), backslashes, drive letters, absolute paths, symlinks, duplicate ZIP members, hash/size mismatches, duplicate record IDs, malformed nutrient states, broken media evidence references (unless `mediaOmitted: true`), and provider profiles (`endpoint-connections`) are rejected.
+- **Hard Resource Limits:** Enforced before expensive allocation or decompression:
+  - Maximum encrypted / compressed archive payload: **64 MiB**
+  - Maximum total expanded archive bytes: **128 MiB**
+  - Maximum ZIP members: **25,000**
+  - Maximum `records.json` expanded bytes: **16 MiB**
+  - Maximum individual media file bytes: **24 MiB**
+- **No Password Recovery:** Salu never persists, logs, or transmits backup passwords or derived keys. If a backup password is forgotten, the archive cannot be recovered.
+- **Plaintext CSV Distinction:** Spreadsheet CSV exports are **unencrypted** and intended for ad-hoc analysis; they do not replace encrypted `SALU1` backups and do not include managed media or full restore metadata.
+- **No Automatic Cloud Backup:** Salu is local-first and makes no promise of automatic cloud sync or cloud backup. Users choose where to store their exported encrypted archives.
