@@ -20,3 +20,4 @@ export 'src/repositories/local_document_store.dart';
 export 'src/repositories/meal_estimate_status_store.dart';
 export 'src/repositories/meal_mutation_repository.dart';
 export 'src/repositories/onboarding_store.dart';
+export 'src/repositories/user_data_repository.dart';

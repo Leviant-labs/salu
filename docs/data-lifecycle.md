@@ -51,3 +51,19 @@ Salu exports portable, authenticated encrypted backups using a versioned ZIP pay
 - **No Password Recovery:** Salu never persists, logs, or transmits backup passwords or derived keys. If a backup password is forgotten, the archive cannot be recovered.
 - **Plaintext CSV Distinction:** Spreadsheet CSV exports are **unencrypted** and intended for ad-hoc analysis; they do not replace encrypted `SALU1` backups and do not include managed media or full restore metadata.
 - **No Automatic Cloud Backup:** Salu is local-first and makes no promise of automatic cloud sync or cloud backup. Users choose where to store their exported encrypted archives.
+
+## Consistent Snapshots, Staged Replace-Only Restore, and Write-Gate Fencing
+
+- **Consistent 5-table snapshot (`UserDataRepository`):** Snapshots read `log_entries`, `log_entry_items`, `photo_meals`, `local_documents`, and `meal_mutations` inside one consistent database read transaction rather than raw-copying an open SQLite/WAL file.
+- **Explicit Document Namespace Classifier:** Every `local_documents.id` is classified explicitly:
+  - **User documents** (exported, replaced on restore, deleted on erase): `planning-profile`, `onboarding-draft`, `food-library`, `recipe-library`, `cooked-batches`, `check-in-settings`, `day:*`, `week:*`, `estimate:*`.
+  - **Catalogue edition metadata** (`catalogue-edition:*`): exported into `catalogueManifest` alongside the bundled starter catalogue version (`bundledCatalogueDataset`), preserved on restore and erase.
+  - **Nonpersonal system state** (`search-index-state`): excluded from user snapshots and preserved on restore and erase.
+  - **Provider/credential metadata** (`endpoint-connections`, retired-credential metadata): excluded from user snapshots and cleared on restore and erase.
+  - **Unknown namespaces:** Fail `snapshot()` visibly with `UnsupportedDocumentNamespaceException` so new features cannot silently leak or drop user data.
+- **Staged Replace-Only Restore (`ArchiveService`):**
+  - `inspect()` decrypts, decodes, and validates the archive in a temporary staging directory under `Isolate.run` and returns a password-free `RestorePreview` bound to a SHA-256 `contentDigest`. Any tampering or removal of staged files invalidates the preview.
+  - `restore()` verifies the digest, stages archived media into `ManagedMediaStore` under **fresh managed IDs** (remapping `photoPath` and item `labelPaths` in the replacement snapshot so existing media remain completely untouched), acquires `DataWriteGate.exclusive`, immediately invalidates `OperationFence`, persists a durable credential-cleanup marker, and replaces the five user tables in FK-safe order inside one transaction while preserving `catalog_foods`, `catalog_barcodes`, `catalogue-edition:*`, and `search-index-state`.
+  - On media-write or DB-replace failure, only newly staged unreferenced media are cleaned up; the original database and original media remain completely intact.
+- **Write-Gate Fencing (`DataWriteGate`):** Ordinary app writes run inside `DataWriteGate.runWrite`. When an exclusive restore or erase is requested, new writes are rejected immediately (`DataWriteBlockedException`), admitted writes drain before the exclusive section starts, nested exclusive calls are rejected without deadlock, and network waits (such as AI meal estimation) stay outside `runWrite` with an `OperationFence` epoch check inside `runWrite` before commit.
+- **Post-Restore Credential Cleanup Recovery:** After a restore commits, `ArchiveService` clears stored credentials via `CredentialStore.clearSaluCredentials()` and removes the durable cleanup marker. If cleanup fails or is interrupted, the marker remains on disk and `resumePendingCredentialCleanup()` retries it before allowing AI use after restart.

@@ -3,6 +3,8 @@ import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
+import '../../assistant/operation_fence.dart';
+import '../../data_transfer/data_write_gate.dart';
 import '../../media/managed_media_store.dart';
 import 'meal_editor_ai.dart';
 import 'meal_editor_images.dart';
@@ -41,11 +43,14 @@ Future<void> estimateSavedMeal({
   required String Function() newId,
   ActiveMealEstimates? activeEstimates,
   MealEstimateStatusStore? statusStore,
+  OperationFence? fence,
+  DataWriteGate? gate,
 }) async {
   if (meal.items.isNotEmpty) return;
   if (activeEstimates != null && !activeEstimates.tryStart(meal.id)) {
     return;
   }
+  final epoch = fence?.capture();
   try {
     var items = const <PhotoMealItem>[];
     String? errorCode;
@@ -80,14 +85,25 @@ Future<void> estimateSavedMeal({
           ? MealEstimateStatus.unavailable
           : MealEstimateStatus.complete,
     );
-    if (statusStore != null) {
-      await statusStore.finish(
-        updated,
-        meal.revision,
-        errorCode: items.isEmpty ? errorCode : null,
-      );
+    Future<void> commit() async {
+      if (fence != null && epoch != null && !fence.isCurrent(epoch)) {
+        return;
+      }
+      if (statusStore != null) {
+        await statusStore.finish(
+          updated,
+          meal.revision,
+          errorCode: items.isEmpty ? errorCode : null,
+        );
+      } else {
+        await repository.replace(updated, meal.revision);
+      }
+    }
+
+    if (gate != null) {
+      await gate.runWrite(commit);
     } else {
-      await repository.replace(updated, meal.revision);
+      await commit();
     }
   } catch (_) {
     // A storage failure leaves the original saved row and the explicit retry.

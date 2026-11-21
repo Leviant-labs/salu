@@ -84,7 +84,8 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
   Future<void> _save(
       String key, int revision, Map<String, Object?> data) async {
     try {
-      if (!await ref.read(documentStoreProvider).put(key, revision, data)) {
+      if (!await ref.read(dataWriteGateProvider).runWrite(
+          () => ref.read(documentStoreProvider).put(key, revision, data))) {
         throw StateError('stale');
       }
     } catch (_) {

@@ -11,6 +11,8 @@ import 'assistant/credential_store.dart';
 import 'assistant/endpoint_transport.dart';
 import 'assistant/inference_gateway.dart';
 import 'assistant/operation_fence.dart';
+import 'data_transfer/archive_service.dart';
+import 'data_transfer/data_write_gate.dart';
 import 'features/meals/meal_estimation.dart';
 import 'features/onboarding/planning_profile.dart';
 import 'features/plan/week_plan.dart';
@@ -22,6 +24,28 @@ final operationFenceProvider = Provider<OperationFence>((ref) {
   ref.onDispose(fence.invalidate);
   return fence;
 });
+
+final dataWriteGateProvider = Provider<DataWriteGate>((ref) => DataWriteGate());
+
+final userDataRepositoryProvider = Provider<UserDataRepository>(
+  (ref) => UserDataRepository(ref.watch(databaseProvider)),
+);
+
+final archiveServiceProvider = Provider<ArchiveService>(
+  (ref) => ArchiveService(
+    data: ref.watch(userDataRepositoryProvider),
+    media: ref.watch(managedMediaStoreProvider),
+    fence: ref.watch(operationFenceProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    gate: ref.watch(dataWriteGateProvider),
+    stagingDirectory: getTemporaryDirectory,
+    onRestored: () {
+      ref.invalidate(todayMealsProvider);
+      ref.invalidate(todayEntriesProvider);
+      ref.invalidate(connectionsControllerProvider);
+    },
+  ),
+);
 
 final credentialStoreProvider = Provider<CredentialStore>(
   (ref) => SecureCredentialStore(),
@@ -145,11 +169,19 @@ final databaseProvider = Provider<AppDatabase>(
 final documentStoreProvider = Provider<LocalDocumentStore>(
     (ref) => LocalDocumentStore(ref.watch(databaseProvider)));
 final planningProfileStoreProvider = Provider<PlanningProfileStore>(
-    (ref) => PlanningProfileStore(documents: ref.watch(documentStoreProvider)));
+  (ref) => PlanningProfileStore(
+    documents: ref.watch(documentStoreProvider),
+    gate: ref.watch(dataWriteGateProvider),
+  ),
+);
 final onboardingStoreProvider = Provider<OnboardingStore>(
     (ref) => OnboardingStore(ref.watch(documentStoreProvider)));
 final weekPlanStoreProvider = Provider<WeekPlanStore>(
-    (ref) => WeekPlanStore(documents: ref.watch(documentStoreProvider)));
+  (ref) => WeekPlanStore(
+    documents: ref.watch(documentStoreProvider),
+    gate: ref.watch(dataWriteGateProvider),
+  ),
+);
 
 /// Catalogue reads.
 final foodRepositoryProvider = Provider<FoodRepository>(

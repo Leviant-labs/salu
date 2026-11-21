@@ -2,11 +2,17 @@ import 'package:flutter/foundation.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
+
 /// Serializes guided onboarding navigation and atomic persistence.
 class OnboardingController extends ChangeNotifier {
-  OnboardingController(this.store);
+  OnboardingController(this.store, {DataWriteGate? gate}) : _gate = gate;
 
   final OnboardingStore store;
+  final DataWriteGate? _gate;
+
+  Future<T> _runWrite<T>(Future<T> Function() work) =>
+      _gate != null ? _gate.runWrite(work) : work();
 
   OnboardingDraft draft = const OnboardingDraft();
   bool busy = false;
@@ -56,7 +62,7 @@ class OnboardingController extends ChangeNotifier {
     try {
       final step = OnboardingStep.values[draft.step.index + 1];
       final candidate = draft.copyWith(step: step, profile: profile);
-      final saved = await store.save(candidate);
+      final saved = await _runWrite(() => store.save(candidate));
       if (_disposed) return false;
       if (!saved) {
         error = 'Setup changed. Reopen the latest step and try again.';
@@ -87,7 +93,7 @@ class OnboardingController extends ChangeNotifier {
     try {
       final step = OnboardingStep.values[draft.step.index - 1];
       final candidate = draft.copyWith(step: step);
-      final saved = await store.save(candidate);
+      final saved = await _runWrite(() => store.save(candidate));
       if (_disposed) return false;
       if (!saved) {
         error = 'Setup changed. Reopen the latest step and try again.';
@@ -118,7 +124,7 @@ class OnboardingController extends ChangeNotifier {
     try {
       final step = OnboardingStep.values[draft.step.index + 1];
       final candidate = draft.copyWith(step: step);
-      final saved = await store.save(candidate);
+      final saved = await _runWrite(() => store.save(candidate));
       if (_disposed) return false;
       if (!saved) {
         error = 'Setup changed. Reopen the latest step and try again.';
@@ -147,7 +153,7 @@ class OnboardingController extends ChangeNotifier {
     error = null;
     _notify();
     try {
-      final completed = await store.complete(draft);
+      final completed = await _runWrite(() => store.complete(draft));
       if (_disposed) return false;
       if (!completed) {
         error = 'Setup changed. Reopen the latest step and try again.';
@@ -176,7 +182,7 @@ class OnboardingController extends ChangeNotifier {
     error = null;
     _notify();
     try {
-      await store.skip();
+      await _runWrite(() => store.skip());
       if (_disposed) return false;
       final reloaded = await store.load();
       if (_disposed) return false;

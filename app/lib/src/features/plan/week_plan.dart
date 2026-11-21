@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
 import '../onboarding/local_json_file.dart';
 
 enum MealSlot {
@@ -234,18 +235,25 @@ class WeekPlan {
 }
 
 class WeekPlanStore {
-  WeekPlanStore(
-      {Future<Directory> Function()? directory, LocalDocumentStore? documents})
-      : _directory = directory,
-        _documents = documents;
+  WeekPlanStore({
+    Future<Directory> Function()? directory,
+    LocalDocumentStore? documents,
+    DataWriteGate? gate,
+  })  : _directory = directory,
+        _documents = documents,
+        _gate = gate;
 
   static final local = WeekPlanStore();
 
   final Future<Directory> Function()? _directory;
   final LocalDocumentStore? _documents;
+  final DataWriteGate? _gate;
   String _key(DateTime week) =>
       'week:${week.toIso8601String().substring(0, 10)}';
   final _files = <DateTime, LocalJsonFile>{};
+
+  Future<T> _runWrite<T>(Future<T> Function() work) =>
+      _gate != null ? _gate.runWrite(work) : work();
 
   LocalJsonFile _file(DateTime week) => _files.putIfAbsent(week, () {
         final filename =
@@ -272,7 +280,8 @@ class WeekPlanStore {
             ...saved.data,
             'version': WeekPlan.currentVersion,
           };
-          if (await docs.put(_key(monday), saved.revision, migrated)) {
+          if (await _runWrite(
+              () => docs.put(_key(monday), saved.revision, migrated))) {
             return plan.copyWith(revision: saved.revision + 1);
           }
           final latest = await docs.read(_key(monday));
@@ -291,7 +300,8 @@ class WeekPlanStore {
     if (data == null) return WeekPlan(monday);
     final legacy = WeekPlan.fromJson(monday, data);
     if (docs == null) return legacy;
-    await docs.put(_key(monday), 0, {...data, ...legacy.toJson()});
+    await _runWrite(
+        () => docs.put(_key(monday), 0, {...data, ...legacy.toJson()}));
     final migrated = (await docs.read(_key(monday)))!;
     return WeekPlan.fromJson(monday, migrated.data,
         revision: migrated.revision);
@@ -300,25 +310,27 @@ class WeekPlanStore {
   Future<void> save(WeekPlan plan) async {
     final docs = _documents;
     if (docs != null) {
-      final existing = await docs.read(_key(plan.monday));
-      if (existing != null) {
-        isCurrentDocumentVersion(
-          existing.data,
-          WeekPlan.currentVersion,
-          documentName: 'week-plan',
-        );
-      }
-      if (!await docs.put(_key(plan.monday), plan.revision, {
-        ...?existing?.data,
-        ...plan.toJson(),
-      })) {
-        throw StateError('This week changed. Reload before saving.');
-      }
+      await _runWrite(() async {
+        final existing = await docs.read(_key(plan.monday));
+        if (existing != null) {
+          isCurrentDocumentVersion(
+            existing.data,
+            WeekPlan.currentVersion,
+            documentName: 'week-plan',
+          );
+        }
+        if (!await docs.put(_key(plan.monday), plan.revision, {
+          ...?existing?.data,
+          ...plan.toJson(),
+        })) {
+          throw StateError('This week changed. Reload before saving.');
+        }
+      });
       return;
     }
-    await _file(plan.monday).update((saved) {
-      if (saved != null) WeekPlan.fromJson(plan.monday, saved);
-      return plan.toJson();
-    });
+    await _runWrite(() => _file(plan.monday).update((saved) {
+          if (saved != null) WeekPlan.fromJson(plan.monday, saved);
+          return plan.toJson();
+        }));
   }
 }

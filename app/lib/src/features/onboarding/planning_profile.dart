@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
 import 'local_json_file.dart';
 
 export 'package:salu_core/salu_core.dart'
@@ -23,18 +24,25 @@ extension WeightUnitLabel on WeightUnit {
 }
 
 class PlanningProfileStore {
-  PlanningProfileStore(
-      {Future<Directory> Function()? directory, LocalDocumentStore? documents})
-      : _file = directory == null
+  PlanningProfileStore({
+    Future<Directory> Function()? directory,
+    LocalDocumentStore? documents,
+    DataWriteGate? gate,
+  })  : _file = directory == null
             ? LocalJsonFile('planning_profile_v1.json')
             : LocalJsonFile('planning_profile_v1.json', directory: directory),
-        _documents = documents;
+        _documents = documents,
+        _gate = gate;
 
   static final local = PlanningProfileStore();
 
   final LocalJsonFile _file;
   final LocalDocumentStore? _documents;
+  final DataWriteGate? _gate;
   static const _key = 'planning-profile';
+
+  Future<T> _runWrite<T>(Future<T> Function() work) =>
+      _gate != null ? _gate.runWrite(work) : work();
 
   Future<PlanningProfile> load() async {
     final docs = _documents;
@@ -49,7 +57,7 @@ class PlanningProfileStore {
           ...stored.data,
           'version': PlanningProfile.currentVersion,
         };
-        if (!await docs.put(_key, stored.revision, migrated)) {
+        if (!await _runWrite(() => docs.put(_key, stored.revision, migrated))) {
           final latest = await docs.read(_key);
           if (latest != null) return PlanningProfile.fromJson(latest.data);
         }
@@ -59,7 +67,8 @@ class PlanningProfileStore {
     final legacy = await _file.read();
     if (legacy == null) return const PlanningProfile();
     final profile = PlanningProfile.fromJson(legacy);
-    if (await docs.put(_key, 0, {...legacy, ...profile.toJson()})) {
+    if (await _runWrite(
+        () => docs.put(_key, 0, {...legacy, ...profile.toJson()}))) {
       return profile;
     }
     return PlanningProfile.fromJson((await docs.read(_key))!.data);
@@ -90,14 +99,16 @@ class PlanningProfileStore {
   Future<void> _update(
       Map<String, Object?> Function(Map<String, dynamic>?) change) async {
     final docs = _documents;
-    if (docs == null) return _file.update(change);
+    if (docs == null) return _runWrite(() => _file.update(change));
     await load();
-    final old = await docs.read(_key);
-    if (old != null) {
-      PlanningProfile.fromJson(old.data);
-    }
-    if (!await docs.put(_key, old?.revision ?? 0, change(old?.data))) {
-      throw StateError('The profile changed while saving');
-    }
+    await _runWrite(() async {
+      final old = await docs.read(_key);
+      if (old != null) {
+        PlanningProfile.fromJson(old.data);
+      }
+      if (!await docs.put(_key, old?.revision ?? 0, change(old?.data))) {
+        throw StateError('The profile changed while saving');
+      }
+    });
   }
 }
