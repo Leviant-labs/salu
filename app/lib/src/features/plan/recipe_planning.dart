@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:salu_core/salu_core.dart' hide MealSlot;
 
 import '../../assistant/assistant.dart';
-import '../onboarding/planning_profile.dart';
 import 'plan_suggestions.dart';
 import 'recipe_library.dart';
 import 'week_plan.dart';

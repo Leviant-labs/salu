@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:salu_core/salu_core.dart' hide MealSlot;
 
-import '../onboarding/planning_profile.dart';
 import 'recipe_planning.dart';
 import 'week_plan.dart';
 

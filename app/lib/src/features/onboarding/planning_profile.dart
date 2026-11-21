@@ -5,114 +5,13 @@ import 'package:salu_data/salu_data.dart';
 
 import 'local_json_file.dart';
 
-enum WeightUnit {
-  kilograms('kg'),
-  pounds('lb');
+export 'package:salu_core/salu_core.dart'
+    show FoodPreferences, PlanningProfile, WeightUnit;
 
-  const WeightUnit(this.label);
-
-  final String label;
-}
-
-class FoodPreferences {
-  const FoodPreferences({
-    this.likes = '',
-    this.dislikes = '',
-    this.exclusions = '',
-    this.strictAllergens = '',
-  });
-
-  factory FoodPreferences.fromJson(Map<String, dynamic> json) =>
-      FoodPreferences(
-        likes: json['likes'] as String? ?? '',
-        dislikes: json['dislikes'] as String? ?? '',
-        exclusions: json['exclusions'] as String? ?? '',
-        strictAllergens: json['strictAllergens'] as String? ?? '',
-      );
-
-  final String likes;
-  final String dislikes;
-  final String exclusions;
-  final String strictAllergens;
-
-  List<String> get exclusionItems => _terms(exclusions);
-  List<String> get allergenItems => _terms(strictAllergens);
-  List<String> get dislikeItems => _terms(dislikes);
-  static List<String> _terms(String value) => value
-      .split(RegExp(r'[,;\n]'))
-      .map((term) => term.trim())
-      .where((term) => term.isNotEmpty)
-      .toList(growable: false);
-
-  Map<String, String> toJson() => {
-        'likes': likes,
-        'dislikes': dislikes,
-        'exclusions': exclusions,
-        'strictAllergens': strictAllergens,
-      };
-}
-
-/// User-declared information only. Null weight represents an unfilled profile.
-class PlanningProfile {
-  const PlanningProfile({
-    this.startingWeight,
-    this.weightUnit = WeightUnit.kilograms,
-    this.energyGoal = '',
-    this.dailyEnergyKcal,
-    this.proteinGrams,
-    this.carbohydrateGrams,
-    this.fatGrams,
-    this.habitualActivity = '',
-    this.preferences = const FoodPreferences(),
-    this.onboarded = false,
-  });
-
-  factory PlanningProfile.fromJson(Map<String, dynamic> json) =>
-      PlanningProfile(
-        startingWeight: (json['startingWeight'] as num?)?.toDouble(),
-        weightUnit: WeightUnit.values.byName(
-          json['weightUnit'] as String? ?? WeightUnit.kilograms.name,
-        ),
-        energyGoal: json['energyGoal'] as String? ?? '',
-        dailyEnergyKcal: (json['dailyEnergyKcal'] as num?)?.toDouble(),
-        proteinGrams: (json['proteinGrams'] as num?)?.toDouble(),
-        carbohydrateGrams: (json['carbohydrateGrams'] as num?)?.toDouble(),
-        fatGrams: (json['fatGrams'] as num?)?.toDouble(),
-        habitualActivity: json['habitualActivity'] as String? ?? '',
-        preferences: FoodPreferences.fromJson(
-          json['preferences'] as Map<String, dynamic>? ?? const {},
-        ),
-        onboarded: json['onboarded'] as bool? ?? json['startingWeight'] != null,
-      );
-
-  final double? startingWeight;
-  final WeightUnit weightUnit;
-  final String energyGoal;
-  final double? dailyEnergyKcal;
-  final double? proteinGrams, carbohydrateGrams, fatGrams;
-  final String habitualActivity;
-  final FoodPreferences preferences;
-  final bool onboarded;
-
-  Map<NutrientKey, double> get targets => {
-        if (dailyEnergyKcal case final value?) NutrientKey.energyKcal: value,
-        if (proteinGrams case final value?) NutrientKey.proteinG: value,
-        if (carbohydrateGrams case final value?)
-          NutrientKey.carbohydrateG: value,
-        if (fatGrams case final value?) NutrientKey.fatG: value,
-      };
-
-  Map<String, Object?> toJson() => {
-        'startingWeight': startingWeight,
-        'weightUnit': weightUnit.name,
-        'energyGoal': energyGoal,
-        'dailyEnergyKcal': dailyEnergyKcal,
-        'proteinGrams': proteinGrams,
-        'carbohydrateGrams': carbohydrateGrams,
-        'fatGrams': fatGrams,
-        'habitualActivity': habitualActivity,
-        'preferences': preferences.toJson(),
-        'onboarded': onboarded,
+extension WeightUnitLabel on WeightUnit {
+  String get label => switch (this) {
+        WeightUnit.kilograms => 'kg',
+        WeightUnit.pounds => 'lb',
       };
 }
 
