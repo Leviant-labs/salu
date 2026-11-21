@@ -27,7 +27,7 @@ to user-declared intentions.
 | --- | --- | --- |
 | `salu_core` | Dart SDK only | Domain types, nutrition arithmetic, diary time semantics, typed commands, ports for storage / health / inference |
 | `salu_data` | `salu_core`, drift, sqlite3 | Schema, migrations, diary repositories and bundled catalogue |
-| `app` | both, Flutter, Riverpod, go_router | UI, composition root, media and secure-storage adapters, OpenAI transport, feature repository wiring |
+| `app` | both, Flutter, Riverpod, go_router | UI, composition root, media and secure-storage adapters, ChatGPT OAuth and BYOK protocol adapters (`InferenceGateway`), feature repository wiring |
 
 The boundary is enforced mechanically, not by convention: `salu_core`'s pubspec
 has no Flutter, drift, or HTTP dependency, and `tool/check_boundaries.sh` greps
@@ -114,11 +114,13 @@ inventory and creates a meal in the same transaction.
 
 ## Provider and health boundaries
 
-The working adapter is `SaluAssistant`, an app-side OpenAI Responses API client
-using a user-supplied API key in platform secure storage. It is not ChatGPT-plan
-authorization. The meal and plan flows each disclose their payload and require
-an explicit request. Provider output and OCR text are untrusted data; neither
-can call a repository directly. `HealthPort` remains an interface.
+`SaluAssistant` delegates to `InferenceGateway` (scoped per Riverpod `ProviderScope`), which routes requests strictly to the single explicitly selected connection with zero automatic provider or model fallback:
+
+- **ChatGPT plan authorization (`chatgpt-plan`):** browser PKCE OAuth via `ChatGptSession` (with JWKS ID-token verification, token refresh, and SSE Responses transport). Eligible ChatGPT plan limits apply.
+- **BYOK endpoint profiles:** named `EndpointProfile` metadata persisted in `local_documents` (`endpoint-connections`) paired with opaque `salu.endpoint.<id>.<gen>` slots in `SecureCredentialStore`. Supports OpenAI Chat Completions (`/chat/completions`), OpenAI Responses (`/responses`), and Anthropic Messages (`/messages`), explicit bounded `GET` model discovery (`models`/`catalogue`) or manual model IDs, and explicit opt-in for loopback/private-network `http://` (public `http://` is rejected). Changing an endpoint's origin or protocol requires re-entering the API key; connection mutations invalidate `OperationFence` to abort in-flight work.
+- **Compatibility note:** Real-service compatibility across live ChatGPT, OpenAI, and Anthropic endpoints is unverified until manually tested with opt-in credentials outside automated fixture/mock tests.
+
+The meal, label, check-in, and plan flows each disclose the active provider destination (and potential plan limits or API billing) and require an explicit user request. Provider output and OCR text are untrusted data; neither can call a repository directly. Safe meal-estimation failure codes persist separately in `MealEstimateStatusStore` (`estimate:<meal-id>`) bound to the meal revision without changing `PhotoMeal` JSON. `HealthPort` remains an interface.
 Local meal autosave never authorizes an external health write. Preserve separate
 user confirmation, permissions, origin tracking, idempotency, and reconciliation
 as specified in [Health exchange](product-spec.md#health-exchange).

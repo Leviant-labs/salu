@@ -1,58 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:salu_core/salu_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../assistant/assistant.dart';
 import '../../providers.dart';
 import '../onboarding/onboarding_screen.dart';
+import 'connections_controller.dart';
+import 'connections_screen.dart';
 
 /// Settings: the honest state of each integration.
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   /// Creates the screen.
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  late Future<bool> _connection = saluAssistant.isConnected;
-
-  Future<void> _connect() async {
-    await _update(() async {
-      await saluAssistant.signInWithChatGpt();
-      const storage = FlutterSecureStorage();
-      if (await storage.read(key: 'salu.chatgpt.welcome') != 'shown' &&
-          mounted) {
-        await showDialog<void>(
-            context: context,
-            builder: (context) => AlertDialog(
-                  title: const Text('You’re using your ChatGPT plan'),
-                  content: const Text(
-                      'Eligible AI requests in Salu use your ChatGPT plan or credits. You can review and manage your usage in ChatGPT settings.'),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Got it'))
-                  ],
-                ));
-        await storage.write(key: 'salu.chatgpt.welcome', value: 'shown');
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      if (!mounted) return;
+      final controller = ref.read(connectionsControllerProvider);
+      if (!controller.loaded) {
+        controller.load();
       }
     });
   }
 
-  Future<void> _update(Future<void> Function() change,
-      {bool signingOut = false}) async {
-    setState(() {
-      _connection = _changeConnection(change, signingOut: signingOut);
-    });
+  Future<void> _openConnections() async {
+    final controller = ref.read(connectionsControllerProvider);
+    await Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ConnectionsScreen(controller: controller),
+      ),
+    );
   }
 
-  Future<bool> _changeConnection(Future<void> Function() change,
-      {required bool signingOut}) async {
+  Future<void> _disconnect(ConnectionsController controller) async {
     try {
-      await change();
+      if (controller.activeId == EndpointProfile.reservedChatGptId) {
+        await controller.disconnectChatGpt();
+      } else {
+        await ref.read(assistantProvider).disconnect();
+        await controller.load();
+      }
     } on SaluAssistantException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -60,19 +56,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } on Object {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(signingOut
-              ? 'Signed out on this device. Remote revocation could not be confirmed; manage access in ChatGPT settings.'
-              : 'Could not connect ChatGPT. Check your browser and internet connection, and make sure plan permission was granted.'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+            'Disconnected on this device. Remote revocation could not be confirmed.',
+          ),
         ));
       }
     }
-    return saluAssistant.isConnected;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final controller = ref.watch(connectionsControllerProvider);
+    final activeId = controller.activeId;
+    final activeProfile = controller.activeProfile;
+    final isChatGptActive = activeId == EndpointProfile.reservedChatGptId &&
+        controller.chatGptConnected;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
       children: [
@@ -80,7 +81,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Planning profile'),
           subtitle: const Text(
-              'Starting weight, goals, activity and food preferences'),
+            'Starting weight, goals, activity and food preferences',
+          ),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.push(OnboardingScreen.routeName),
         ),
@@ -110,52 +112,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _Section(
           title: 'Salu assistant',
           subtitle:
-              'Connect your ChatGPT account to estimate meals and help with planning. '
-              'Your eligible ChatGPT plan and its usage limits apply. Only the information you choose to send is shared.',
+              'Connect your ChatGPT account or a compatible API endpoint to estimate meals and help with planning. '
+              'Only the information you choose to send is shared.',
           children: [
-            FutureBuilder<bool>(
-              future: _connection,
-              builder: (context, snapshot) => Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (snapshot.connectionState != ConnectionState.done)
-                        const Row(children: [
-                          SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2)),
-                          SizedBox(width: 12),
-                          Expanded(
-                              child: Text('Connecting… check your browser'))
-                        ])
-                      else if (snapshot.data == true) ...[
-                        const ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.auto_awesome_outlined),
-                            title: Text('Using ChatGPT plan')),
-                        Wrap(spacing: 8, children: [
-                          OutlinedButton(
-                              onPressed: () => _update(saluAssistant.disconnect,
-                                  signingOut: true),
-                              child: const Text('Disconnect')),
-                          TextButton(
-                              onPressed: () => launchUrl(
-                                  Uri.parse(
-                                      'https://chatgpt.com/settings/usage'),
-                                  mode: LaunchMode.externalApplication),
-                              child: const Text('Manage usage')),
-                        ]),
-                      ] else ...[
-                        if (snapshot.hasError)
-                          const Text('Could not read secure storage.'),
-                        FilledButton.icon(
-                            onPressed: _connect,
-                            icon: const Icon(Icons.auto_awesome_outlined),
-                            label: const Text('Continue with ChatGPT')),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!controller.loaded)
+                    const LinearProgressIndicator()
+                  else if (isChatGptActive) ...[
+                    const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.auto_awesome_outlined),
+                      title: Text('Active: ChatGPT plan'),
+                      subtitle: Text('Eligible ChatGPT plan limits apply.'),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonal(
+                          onPressed: _openConnections,
+                          child: const Text('Manage AI connections'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => _disconnect(controller),
+                          child: const Text('Disconnect'),
+                        ),
+                        TextButton(
+                          onPressed: () => launchUrl(
+                            Uri.parse('https://chatgpt.com/settings/usage'),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          child: const Text('Manage usage'),
+                        ),
                       ],
-                    ]),
+                    ),
+                  ] else if (activeProfile != null) ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.hub_outlined),
+                      title: Text('Active: ${activeProfile.name}'),
+                      subtitle: Text(
+                        '${activeProfile.protocol.name} · ${activeProfile.apiRoot}'
+                        '${activeProfile.modelId != null ? ' · ${activeProfile.modelId}' : ''}',
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonal(
+                          onPressed: _openConnections,
+                          child: const Text('Manage AI connections'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => _disconnect(controller),
+                          child: const Text('Disconnect'),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.cloud_off_outlined),
+                      title: const Text('Not connected'),
+                      subtitle: Text(
+                        controller.profiles.isEmpty
+                            ? 'Optional. Your diary and planner work offline without AI.'
+                            : '${controller.profiles.length} saved endpoint${controller.profiles.length == 1 ? '' : 's'} · none selected',
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _openConnections,
+                      icon: const Icon(Icons.auto_awesome_outlined),
+                      label: const Text('Manage AI connections'),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

@@ -56,8 +56,10 @@ To generate native platform folders (`android/`, `ios/`, not committed) before r
 
 ## Try the new flow
 
-1. For AI features, go to **Settings → Continue with ChatGPT** and approve
-   plan usage in your browser. Eligible ChatGPT plan limits apply.
+1. AI connections are optional and configured in **Settings → Manage AI connections** (or **Your setup → Set up AI connection** during onboarding):
+   - **ChatGPT account:** choose **Continue with ChatGPT** and approve plan usage in your browser. Eligible ChatGPT plan limits apply.
+   - **BYOK (Bring Your Own Key) API endpoints:** add a named endpoint profile for **OpenAI Chat Completions**, **OpenAI Responses**, or **Anthropic Messages** with your own API key (stored in platform secure storage and never shown again), discover models (`GET /models` or `/catalogue`) or enter a model ID manually, and optionally enable **Allow local network HTTP** for loopback or private LAN servers (`http://127.0.0.1`, `10.x`, `192.168.x`; public `http://` is always blocked). Provider API billing may apply.
+   - Only the explicitly selected active connection is used, with no automatic fallback. Real third-party service compatibility remains unverified until tested on device with opt-in credentials outside automated fixture tests.
 2. In **Today → Log a meal**, take or choose a photo and type “This was my lunch
    today.” **Save with AI estimate** puts the photo under Lunch right away.
    Salu fills in estimates when they arrive, or offers a retry. Use the calendar

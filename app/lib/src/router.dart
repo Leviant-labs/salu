@@ -11,6 +11,7 @@ import 'features/meals/meal_editor.dart';
 import 'features/search/food_library.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/search/search_screen.dart';
+import 'features/settings/connections_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/today/today_screen.dart';
 import 'providers.dart';
@@ -34,6 +35,14 @@ final appRouter = GoRouter(
                 onSaved: () =>
                     context.canPop() ? context.pop() : context.go('/today'),
                 firstRun: state.uri.queryParameters.containsKey('first'),
+                openConnections: (ctx) =>
+                    Navigator.of(ctx, rootNavigator: true).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ConnectionsScreen(
+                      controller: ref.read(connectionsControllerProvider),
+                    ),
+                  ),
+                ),
               )),
     ),
     StatefulShellRoute.indexedStack(
@@ -60,37 +69,44 @@ final appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/plan',
-              builder: (context, state) => Consumer(
-                  builder: (context, ref, child) => PlanScreen(
-                        store: ref.watch(weekPlanStoreProvider),
-                        profileStore: ref.watch(planningProfileStoreProvider),
-                        recipePlanning: RecipePlanning(
-                            RecipeLibrary(ref.watch(foodRepositoryProvider),
-                                ref.watch(documentStoreProvider)),
-                            saluAssistant),
-                        suggestions: AssistantPlanSuggestionSource(
-                            assistant: saluAssistant),
-                        onLogRecipe: (recipe, servings, slot, date) async {
-                          await Navigator.of(context, rootNavigator: true)
-                              .push<void>(MaterialPageRoute(
-                                  builder: (_) => MealEditor(
-                                        repository: ref
-                                            .read(photoMealRepositoryProvider),
-                                        assistant: saluAssistant,
-                                        foods: ref.read(foodRepositoryProvider),
-                                        date: date,
-                                        today: ref.read(todayDiaryDateProvider),
-                                        library: FoodLibrary(
-                                            ref.read(documentStoreProvider)),
-                                        newId:
-                                            ref.read(idGeneratorProvider).next,
-                                        initialDescription: recipe.name,
-                                        initialItems: recipe.snapshot(servings),
-                                        initialSlot: core.MealSlot.values
-                                            .byName(slot.name),
-                                      )));
-                        },
-                      )),
+              builder: (context, state) =>
+                  Consumer(builder: (context, ref, child) {
+                final assistant = ref.watch(assistantProvider);
+                return PlanScreen(
+                  store: ref.watch(weekPlanStoreProvider),
+                  profileStore: ref.watch(planningProfileStoreProvider),
+                  assistant: assistant,
+                  recipePlanning: RecipePlanning(
+                      RecipeLibrary(ref.watch(foodRepositoryProvider),
+                          ref.watch(documentStoreProvider)),
+                      assistant),
+                  suggestions:
+                      AssistantPlanSuggestionSource(assistant: assistant),
+                  onLogRecipe: (recipe, servings, slot, date) async {
+                    await Navigator.of(context, rootNavigator: true)
+                        .push<void>(MaterialPageRoute(
+                            builder: (_) => MealEditor(
+                                  repository:
+                                      ref.read(photoMealRepositoryProvider),
+                                  assistant: ref.read(assistantProvider),
+                                  activeEstimates:
+                                      ref.read(activeMealEstimatesProvider),
+                                  estimateStatusStore:
+                                      ref.read(mealEstimateStatusStoreProvider),
+                                  foods: ref.read(foodRepositoryProvider),
+                                  date: date,
+                                  today: ref.read(todayDiaryDateProvider),
+                                  library: FoodLibrary(
+                                      ref.read(documentStoreProvider)),
+                                  newId: ref.read(idGeneratorProvider).next,
+                                  initialDescription: recipe.name,
+                                  initialItems: recipe.snapshot(servings),
+                                  initialSlot:
+                                      core.MealSlot.values.byName(slot.name),
+                                )));
+                  },
+                );
+              }),
             ),
           ],
         ),
@@ -178,6 +194,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             store: ref.read(planningProfileStoreProvider),
             onboardingStore: ref.read(onboardingStoreProvider),
             firstRun: true,
+            openConnections: (ctx) =>
+                Navigator.of(ctx, rootNavigator: true).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => ConnectionsScreen(
+                  controller: ref.read(connectionsControllerProvider),
+                ),
+              ),
+            ),
             onSaved: () => setState(() {
               _setup = Future.value(true);
             }),

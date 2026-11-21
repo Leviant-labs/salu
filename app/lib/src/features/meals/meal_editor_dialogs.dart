@@ -125,6 +125,7 @@ Future<PhotoMealItem?> editMealLabel(
   required String labelPath,
   required Future<LabelTranscription?> Function() readLabel,
   LabelTranscription? initial,
+  String? providerLabel,
 }) =>
     showDialog<PhotoMealItem>(
       context: context,
@@ -132,7 +133,8 @@ Future<PhotoMealItem?> editMealLabel(
           item: item,
           labelPath: labelPath,
           readLabel: readLabel,
-          initial: initial),
+          initial: initial,
+          providerLabel: providerLabel),
     );
 
 class _MealLabelForm extends StatefulWidget {
@@ -140,12 +142,14 @@ class _MealLabelForm extends StatefulWidget {
       {required this.item,
       required this.labelPath,
       required this.readLabel,
-      this.initial});
+      this.initial,
+      this.providerLabel});
 
   final PhotoMealItem item;
   final String labelPath;
   final Future<LabelTranscription?> Function() readLabel;
   final LabelTranscription? initial;
+  final String? providerLabel;
 
   @override
   State<_MealLabelForm> createState() => _MealLabelFormState();
@@ -285,8 +289,8 @@ class _MealLabelFormState extends State<_MealLabelForm> {
               )
             else ...[
               Text('Amount eaten: ${mealPortionText(consumed)}.'),
-              const Text(
-                  'Read with AI sends only this label photo to OpenAI using your ChatGPT connection.'),
+              Text(
+                  'Read with AI sends only this label photo to ${widget.providerLabel ?? 'your selected AI provider'}. Provider plan limits or user-funded API billing may apply.'),
               OutlinedButton(
                 onPressed: _reading ? null : _readLabel,
                 child: Text(_reading ? 'Reading label…' : 'Read label with AI'),

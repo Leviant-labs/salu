@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart';
 
+import '../../assistant/assistant.dart';
 import '../../providers.dart';
 import '../meals/meal_editor.dart';
+import '../meals/meal_editor_ai.dart';
 import '../meals/meal_editor_data.dart';
 import '../meals/meal_estimation.dart';
+import '../settings/connections_screen.dart';
 import 'check_in_screen.dart';
 import '../search/food_library.dart';
 
@@ -22,7 +25,9 @@ class TodayScreen extends ConsumerWidget {
       builder: (_) => MealEditor(
         meal: meal,
         repository: ref.read(photoMealRepositoryProvider),
-        assistant: saluAssistant,
+        assistant: ref.read(assistantProvider),
+        activeEstimates: ref.read(activeMealEstimatesProvider),
+        estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
         foods: ref.read(foodRepositoryProvider),
         date: ref.read(visibleDiaryDateProvider),
         today: today,
@@ -213,13 +218,30 @@ class TodayScreen extends ConsumerWidget {
             Text(slot.label, style: theme.textTheme.titleLarge),
             for (final meal in photos.where((meal) => meal.slot == slot))
               _MealCard(
-                  meal: meal,
-                  onTap: () => _edit(context, ref, meal),
-                  retry: () => estimateSavedMeal(
-                      meal: meal,
-                      repository: ref.read(photoMealRepositoryProvider),
-                      assistant: saluAssistant,
-                      newId: ref.read(idGeneratorProvider).next)),
+                meal: meal,
+                onTap: () => _edit(context, ref, meal),
+                openConnections: () =>
+                    Navigator.of(context, rootNavigator: true).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ConnectionsScreen(
+                      controller: ref.read(connectionsControllerProvider),
+                    ),
+                  ),
+                ),
+                retry: () async {
+                  await estimateSavedMeal(
+                    meal: meal,
+                    repository: ref.read(photoMealRepositoryProvider),
+                    assistant: ref.read(assistantProvider),
+                    newId: ref.read(idGeneratorProvider).next,
+                    activeEstimates: ref.read(activeMealEstimatesProvider),
+                    statusStore: ref.read(mealEstimateStatusStoreProvider),
+                  );
+                  if (context.mounted) {
+                    ref.invalidate(mealEstimateErrorProvider);
+                  }
+                },
+              ),
           ],
         if (legacy.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -273,16 +295,21 @@ class TodayScreen extends ConsumerWidget {
   }
 }
 
-class _MealCard extends StatelessWidget {
-  const _MealCard(
-      {required this.meal, required this.onTap, required this.retry});
+class _MealCard extends ConsumerWidget {
+  const _MealCard({
+    required this.meal,
+    required this.onTap,
+    required this.retry,
+    required this.openConnections,
+  });
 
   final PhotoMeal meal;
   final VoidCallback onTap;
   final VoidCallback retry;
+  final VoidCallback openConnections;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final path = meal.photoPath;
     final title = meal.caption.isNotEmpty
@@ -291,7 +318,20 @@ class _MealCard extends StatelessWidget {
             ? meal.slot.label
             : meal.items.map((item) => item.name).join(', ');
     final estimated =
-        meal.items.any((item) => item.source == 'openai-meal-estimate');
+        meal.items.any((item) => isAiMealEstimateSource(item.source));
+    final needsRecovery =
+        meal.items.isEmpty && meal.estimateStatus != MealEstimateStatus.none;
+    final activeEstimates =
+        needsRecovery ? ref.watch(activeMealEstimatesProvider) : null;
+    final errorCode =
+        needsRecovery && meal.estimateStatus == MealEstimateStatus.unavailable
+            ? ref
+                .watch(mealEstimateErrorProvider(
+                  (mealId: meal.id, revision: meal.revision),
+                ))
+                .valueOrNull
+            : null;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -325,22 +365,84 @@ class _MealCard extends StatelessWidget {
                       : '${_total(meal.items.map((item) => item.nutrients), NutrientKey.energyKcal)}'
                           '${estimated ? ' · AI estimate' : ''}'),
                   Text('Review or correct', style: theme.textTheme.labelLarge),
-                  if (meal.items.isEmpty &&
-                      meal.estimateStatus != MealEstimateStatus.none)
+                  if (needsRecovery && activeEstimates != null)
                     ValueListenableBuilder<Set<String>>(
-                        valueListenable: activeMealEstimates,
-                        builder: (context, active, child) => active
-                                .contains(meal.id)
-                            ? const Text('Estimating…')
-                            : TextButton(
-                                onPressed: retry,
-                                child: const Text(
-                                    'Retry AI estimate (sends photo/text to OpenAI)'))),
+                      valueListenable: activeEstimates,
+                      builder: (context, active, child) {
+                        if (active.contains(meal.id)) {
+                          return const Text('Estimating…');
+                        }
+                        return _EstimateRecovery(
+                          errorCode: errorCode,
+                          retry: retry,
+                          openConnections: openConnections,
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EstimateRecovery extends StatelessWidget {
+  const _EstimateRecovery({
+    required this.errorCode,
+    required this.retry,
+    required this.openConnections,
+  });
+
+  final SaluAssistantErrorCode? errorCode;
+  final VoidCallback retry;
+  final VoidCallback openConnections;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = errorCode;
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (code != null)
+            Text(
+              SaluAssistantException(code).message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (code == SaluAssistantErrorCode.notConnected ||
+                  code == SaluAssistantErrorCode.authenticationFailed)
+                FilledButton.tonal(
+                  onPressed: openConnections,
+                  child: const Text('Open AI connections'),
+                )
+              else if (code == SaluAssistantErrorCode.quotaExceeded ||
+                  code == SaluAssistantErrorCode.rateLimited)
+                OutlinedButton(
+                  onPressed: openConnections,
+                  child: const Text('Switch or check connection'),
+                ),
+              TextButton(
+                onPressed: retry,
+                child: Text(
+                  code == SaluAssistantErrorCode.busy
+                      ? 'Wait and retry AI estimate'
+                      : 'Retry AI estimate',
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

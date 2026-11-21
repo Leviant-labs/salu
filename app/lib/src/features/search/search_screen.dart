@@ -53,7 +53,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => MealEditor(
         repository: ref.read(photoMealRepositoryProvider),
-        assistant: saluAssistant,
+        assistant: ref.read(assistantProvider),
+        activeEstimates: ref.read(activeMealEstimatesProvider),
+        estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
         foods: ref.read(foodRepositoryProvider),
         date: ref.read(todayDiaryDateProvider),
         newId: ref.read(idGeneratorProvider).next,

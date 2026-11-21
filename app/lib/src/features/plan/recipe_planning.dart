@@ -62,6 +62,7 @@ Interpret request as a preference about these meals only. Leave slots unchanged 
 Return {"meals":[{"day":0,"slot":"dinner","recipeKey":"id@1","servings":1}]}.
 Use valid portion bounds. When available, prefer the app's suggested portion for that slot. Honor dislikes, omit unsupported slots, and keep the reply compact.
 ''',
+          task: InferenceTask.planSuggestions,
           prompt: jsonEncode({
             'request': request.request,
             'dislikes': profile.preferences.dislikeItems,

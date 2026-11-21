@@ -4,9 +4,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:salu_core/salu_core.dart';
 
 import 'chatgpt_session.dart';
 import 'endpoint_transport.dart';
+import 'inference_gateway.dart';
 import 'operation_fence.dart';
 
 enum SaluAssistantErrorCode {
@@ -31,6 +33,15 @@ enum SaluAssistantErrorCode {
   refused,
 }
 
+/// Validates a persisted error code string, mapping unknown future values to
+/// [SaluAssistantErrorCode.serviceUnavailable].
+SaluAssistantErrorCode parseSaluAssistantErrorCode(String raw) {
+  for (final code in SaluAssistantErrorCode.values) {
+    if (code.name == raw) return code;
+  }
+  return SaluAssistantErrorCode.serviceUnavailable;
+}
+
 /// Safe to display. Deliberately excludes provider messages and raw causes.
 final class SaluAssistantException implements Exception {
   const SaluAssistantException(this.code);
@@ -39,12 +50,12 @@ final class SaluAssistantException implements Exception {
 
   String get message => switch (code) {
         SaluAssistantErrorCode.notConnected =>
-          'Continue with ChatGPT in Settings first.',
+          'Connect an AI provider in Settings first.',
         SaluAssistantErrorCode.connectionChanged =>
-          'The OpenAI connection changed. Please try again.',
-        SaluAssistantErrorCode.invalidKey => 'Enter a valid OpenAI API key.',
+          'The AI connection changed. Please try again.',
+        SaluAssistantErrorCode.invalidKey => 'Enter a valid API key.',
         SaluAssistantErrorCode.storageUnavailable =>
-          'Could not access secure storage for your OpenAI key.',
+          'Could not access secure storage for your credentials.',
         SaluAssistantErrorCode.busy =>
           'An assistant request is already running.',
         SaluAssistantErrorCode.invalidInput => 'Enter text or attach an image.',
@@ -52,33 +63,33 @@ final class SaluAssistantException implements Exception {
           'The request is too large. Shorten the text or use fewer or smaller images.',
         SaluAssistantErrorCode.unsupportedImage => 'Use JPEG or PNG images.',
         SaluAssistantErrorCode.authenticationFailed =>
-          'Your OpenAI session expired. Reconnect in Settings.',
+          'Your AI credentials were rejected or expired. Reconnect in Settings.',
         SaluAssistantErrorCode.accessDenied =>
-          'Your account does not have access to this request.',
+          'Your account or key does not have access to this request.',
         SaluAssistantErrorCode.quotaExceeded =>
-          'Check your ChatGPT plan usage and limits.',
+          'Usage limit or quota exceeded for the active AI provider.',
         SaluAssistantErrorCode.rateLimited =>
-          'OpenAI is rate limiting requests. Wait a moment and try again.',
-        SaluAssistantErrorCode.timeout => 'The OpenAI request timed out.',
+          'The AI provider is rate limiting requests. Wait a moment and try again.',
+        SaluAssistantErrorCode.timeout => 'The AI request timed out.',
         SaluAssistantErrorCode.networkError =>
-          'Could not reach OpenAI. Check your internet connection.',
+          'Could not reach the AI provider. Check your connection and endpoint.',
         SaluAssistantErrorCode.serviceUnavailable =>
-          'OpenAI is temporarily unavailable. Try again later.',
+          'The AI provider is temporarily unavailable. Try again later.',
         SaluAssistantErrorCode.requestRejected =>
-          'OpenAI rejected the request. Check your input or model access.',
+          'The AI provider rejected the request. Check your endpoint, input, or model access.',
         SaluAssistantErrorCode.invalidResponse =>
-          'OpenAI returned an invalid reply.',
+          'The AI provider returned an invalid reply.',
         SaluAssistantErrorCode.incompleteResponse =>
-          'OpenAI did not finish the reply. Try a shorter request.',
+          'The AI provider did not finish the reply. Try a shorter request.',
         SaluAssistantErrorCode.refused =>
-          'OpenAI declined to answer this request.',
+          'The AI provider declined to answer this request.',
       };
 
   @override
   String toString() => message;
 }
 
-/// Storage port for the single local OpenAI credential.
+/// Storage port for the single local API key credential.
 abstract interface class SaluAssistantKeyStore {
   Future<String?> read();
   Future<void> write(String key);
@@ -101,9 +112,8 @@ final class _SecureKeyStore implements SaluAssistantKeyStore {
   Future<void> delete() => _storage.delete(key: _slot);
 }
 
-/// Optional native client for the OpenAI API. Only [ask] uses the network.
-/// Share one instance between Settings and callers so changing the key can
-/// abort its in-flight request. The default transport and storage are lazy.
+/// Assistant facade. Delegates to [InferenceGateway] when provided, or preserves
+/// the direct ChatGPT-session / legacy key-store behavior when absent.
 final class SaluAssistant {
   /// An injected HTTP factory must return a fresh client for each request.
   SaluAssistant({
@@ -113,23 +123,29 @@ final class SaluAssistant {
     Duration requestTimeout = const Duration(seconds: 45),
     OperationFence? fence,
     EndpointTransport? transport,
-  })  : _keyStore = keyStore ?? const _SecureKeyStore(),
+    InferenceGateway? gateway,
+  })  : _gateway = gateway,
+        _keyStore =
+            gateway != null ? null : (keyStore ?? const _SecureKeyStore()),
         _fence = fence ?? OperationFence(),
         _requestTimeout = requestTimeout,
-        _ownsChatGpt = chatGptSession == null && keyStore == null {
+        _ownsChatGpt =
+            gateway == null && chatGptSession == null && keyStore == null {
     _transport = transport ??
         EndpointTransport(
           clientFactory: httpClientFactory,
           timeout: requestTimeout,
         );
-    _chatgpt = chatGptSession ??
-        (keyStore == null
-            ? ChatGptSession(
-                transport: _transport,
-                fence: _fence,
-                timeout: requestTimeout,
-              )
-            : null);
+    _chatgpt = gateway != null
+        ? null
+        : (chatGptSession ??
+            (keyStore == null
+                ? ChatGptSession(
+                    transport: _transport,
+                    fence: _fence,
+                    timeout: requestTimeout,
+                  )
+                : null));
   }
 
   static final _endpoint = Uri.https('api.openai.com', '/v1/responses');
@@ -146,7 +162,8 @@ final class SaluAssistant {
   static const _maxResponseBytes = EndpointTransport.defaultMaxBytes;
   static const _maxResultDepth = 32;
 
-  final SaluAssistantKeyStore _keyStore;
+  final InferenceGateway? _gateway;
+  final SaluAssistantKeyStore? _keyStore;
   final OperationFence _fence;
   late final EndpointTransport _transport;
   late final ChatGptSession? _chatgpt;
@@ -155,17 +172,49 @@ final class SaluAssistant {
   Future<void>? _keyChange;
   bool _asking = false;
 
-  /// Indicates a saved key, not verified API access or billing status.
-  Future<bool> get isConnected async => _chatgpt != null
-      ? _chatgpt.isConnected
-      : await _readKey(_fence.capture()) != null;
+  /// Indicates a saved credential/session, not verified API access or billing.
+  Future<bool> get isConnected async {
+    if (_gateway != null) return _gateway.isConnected;
+    return _chatgpt != null
+        ? _chatgpt.isConnected
+        : await _readKey(_fence.capture()) != null;
+  }
+
+  /// Display label for the active connected provider, or `null` when
+  /// disconnected.
+  Future<String?> get activeProviderLabel async {
+    if (_gateway != null) return _gateway.activeProviderLabel;
+    if (_chatgpt != null) {
+      return await _chatgpt.isConnected ? 'ChatGPT' : null;
+    }
+    return await _readKey(_fence.capture()) != null ? 'OpenAI' : null;
+  }
+
+  /// Neutral provenance identifier for the active connected provider, or
+  /// `null` when disconnected.
+  Future<String?> get activeProviderProvenance async {
+    if (_gateway != null) return _gateway.activeProviderProvenance;
+    if (_chatgpt != null) {
+      return await _chatgpt.isConnected
+          ? EndpointProfile.reservedChatGptId
+          : null;
+    }
+    return await _readKey(_fence.capture()) != null ? 'openaiResponses' : null;
+  }
 
   Future<void> signInWithChatGpt() async {
-    await _changeKey(() => _chatgpt!.signIn(), storageOnly: false);
+    final chatgpt = _chatgpt;
+    if (chatgpt == null) {
+      throw StateError('ChatGPT sign-in is not configured on this assistant.');
+    }
+    await _changeKey(chatgpt.signIn, storageOnly: false);
   }
 
   /// Save a key locally. Its authorization is first checked by an explicit ask.
   Future<void> connect(String key) async {
+    if (_keyStore == null) {
+      throw StateError('Direct API key storage is not configured.');
+    }
     final normalized = key.trim();
     if (!_isValidKey(normalized)) {
       throw const SaluAssistantException(SaluAssistantErrorCode.invalidKey);
@@ -173,12 +222,16 @@ final class SaluAssistant {
     await _changeKey(() => _keyStore.write(normalized));
   }
 
-  /// Forget the local key and abort any local in-flight request. This cannot
-  /// undo a submission that OpenAI has already received or revoke the API key.
-  Future<void> disconnect() => _changeKey(
-        _chatgpt == null ? _keyStore.delete : _chatgpt.signOut,
-        storageOnly: _chatgpt == null,
-      );
+  /// Forget the local credential/session and abort any local in-flight request.
+  Future<void> disconnect() {
+    if (_gateway != null) {
+      return _gateway.disconnect();
+    }
+    return _changeKey(
+      _chatgpt == null ? _keyStore!.delete : _chatgpt.signOut,
+      storageOnly: _chatgpt == null,
+    );
+  }
 
   /// Send only the supplied inputs. Returns an untrusted JSON object whose
   /// task-specific fields must still be validated by the caller.
@@ -186,7 +239,18 @@ final class SaluAssistant {
     required String instructions,
     required String prompt,
     List<Uint8List> images = const [],
+    InferenceTask task = InferenceTask.mealPhoto,
+    String? requestId,
   }) async {
+    if (_gateway != null) {
+      return _gateway.ask(
+        instructions: instructions,
+        prompt: prompt,
+        images: images,
+        task: task,
+        requestId: requestId,
+      );
+    }
     if (_asking) {
       throw const SaluAssistantException(SaluAssistantErrorCode.busy);
     }
@@ -332,7 +396,9 @@ final class SaluAssistant {
   Future<String?> _readKey(int epoch) async {
     // Fail closed if a prior key mutation failed (especially a failed delete).
     await _keyChange;
-    final key = await _withStorage(_keyStore.read);
+    final keyStore = _keyStore;
+    if (keyStore == null) return null;
+    final key = await _withStorage(keyStore.read);
     if (!_fence.isCurrent(epoch) || key == null || !_isValidKey(key)) {
       return null;
     }

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:salu_core/salu_core.dart' show InferenceTask;
+
 import '../../assistant/assistant.dart';
 import '../onboarding/planning_profile.dart';
 import 'week_plan.dart';
@@ -93,22 +95,21 @@ class PlanAssistantNotConnected implements Exception {
 }
 
 class AssistantPlanSuggestionSource implements PlanSuggestionSource {
-  const AssistantPlanSuggestionSource({SaluAssistant? assistant})
+  const AssistantPlanSuggestionSource({required SaluAssistant assistant})
       : _assistant = assistant;
 
-  static final _defaultAssistant = SaluAssistant();
-  final SaluAssistant? _assistant;
+  final SaluAssistant _assistant;
 
   @override
   Future<PlanDraft> suggest(
     FoodPreferences preferences, {
     PlanSuggestionContext? context,
   }) async {
-    final assistant = _assistant ?? _defaultAssistant;
-    if (!await assistant.isConnected) throw const PlanAssistantNotConnected();
-    final response = await assistant.ask(
+    if (!await _assistant.isConnected) throw const PlanAssistantNotConnected();
+    final response = await _assistant.ask(
       instructions: planSuggestionInstructions,
       prompt: planSuggestionPrompt(preferences, context: context),
+      task: InferenceTask.planSuggestions,
     );
     return PlanDraft.fromResponse(
       response,

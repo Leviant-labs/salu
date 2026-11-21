@@ -798,4 +798,25 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('onboarding can finish without connecting AI', (tester) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final documents = LocalDocumentStore(db);
+    final store = OnboardingStore(documents);
+    await store.save(const OnboardingDraft(step: OnboardingStep.aiSetup));
+    var opened = false;
+    await tester.pumpWidget(MaterialApp(
+      home: OnboardingWizard(
+        store: store,
+        onCompleted: () {},
+        openConnections: (_) async => opened = true,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Skip this step'));
+    await tester.pumpAndSettle();
+    expect(opened, isFalse);
+    expect(find.text('Review your setup'), findsOneWidget);
+  });
 }

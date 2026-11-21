@@ -2,30 +2,100 @@ import 'package:flutter/foundation.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../assistant/assistant.dart';
 import '../../assistant/credential_store.dart';
+import '../../assistant/endpoint_transport.dart';
+import '../../assistant/model_discovery.dart';
+import '../../assistant/operation_fence.dart';
+
+typedef DiscoverModelsCallback = Future<List<DiscoveredModel>> Function(
+  EndpointProfile profile,
+  CredentialStore credentials,
+  EndpointTransport transport,
+  OperationFence fence,
+);
+
+enum ConnectionCheckOutcome { untested, available, unavailable }
+
+final class ConnectionStatus {
+  const ConnectionStatus({
+    this.outcome = ConnectionCheckOutcome.untested,
+    this.message = 'Not tested',
+    this.errorCode,
+  });
+
+  final ConnectionCheckOutcome outcome;
+  final String message;
+  final SaluAssistantErrorCode? errorCode;
+}
 
 /// Coordinates nonsecret [EndpointProfile] persistence with staged
-/// [CredentialStore] slot writes, rotation, and removal.
+/// [CredentialStore] slot writes, rotation, removal, and bounded discovery/test
+/// checks.
 class ConnectionsController extends ChangeNotifier {
   ConnectionsController(
     this._profilesStore,
     this._credentials, {
+    EndpointTransport? transport,
+    OperationFence? fence,
+    DiscoverModelsCallback? discoverModelsCallback,
+    Future<bool> Function()? isChatGptConnected,
+    Future<void> Function()? signInChatGpt,
+    Future<void> Function()? signOutChatGpt,
     void Function()? onInvalidate,
-  }) : _onInvalidate = onInvalidate;
+  })  : _transport = transport,
+        _fence = fence,
+        _discoverModels = discoverModelsCallback ?? discoverModels,
+        _isChatGptConnected = isChatGptConnected,
+        _signInChatGpt = signInChatGpt,
+        _signOutChatGpt = signOutChatGpt,
+        _onInvalidate = onInvalidate;
 
   final EndpointProfilesStore _profilesStore;
   final CredentialStore _credentials;
+  EndpointTransport? _transport;
+  OperationFence? _fence;
+  final DiscoverModelsCallback _discoverModels;
+  final Future<bool> Function()? _isChatGptConnected;
+  final Future<void> Function()? _signInChatGpt;
+  final Future<void> Function()? _signOutChatGpt;
   final void Function()? _onInvalidate;
 
   List<EndpointProfile> _profiles = const <EndpointProfile>[];
   String? _activeId;
   int _revision = 0;
+  bool _loaded = false;
+  bool _chatGptConnected = false;
   bool _disposed = false;
   Future<void> _tail = Future<void>.value();
+  final Set<String> _busyIds = <String>{};
+  final Map<String, List<DiscoveredModel>> _discoveredModels =
+      <String, List<DiscoveredModel>>{};
+  final Map<String, ConnectionStatus> _statuses = <String, ConnectionStatus>{};
 
   List<EndpointProfile> get profiles => _profiles;
   String? get activeId => _activeId;
   int get revision => _revision;
+  bool get loaded => _loaded;
+  bool get chatGptConnected => _chatGptConnected;
+  bool get anyBusy => _busyIds.isNotEmpty;
+  bool isBusy(String id) => _busyIds.contains(id);
+
+  EndpointProfile? get activeProfile {
+    final id = _activeId;
+    if (id == null || id == EndpointProfile.reservedChatGptId) return null;
+    return _findById(_profiles, id);
+  }
+
+  List<DiscoveredModel> discoveredModelsFor(String id) =>
+      _discoveredModels[id] ?? const <DiscoveredModel>[];
+
+  ConnectionStatus statusFor(String id) =>
+      _statuses[id] ?? const ConnectionStatus();
+
+  EndpointTransport get _effectiveTransport =>
+      _transport ??= EndpointTransport();
+  OperationFence get _effectiveFence => _fence ??= OperationFence();
 
   @override
   void dispose() {
@@ -45,14 +115,29 @@ class ConnectionsController extends ChangeNotifier {
     return next;
   }
 
-  /// Reloads endpoint profiles and active selection from storage.
+  /// Reloads endpoint profiles, active selection, and ChatGPT session state.
   Future<void> load() => _serialized(() async {
         final state = await _profilesStore.load();
+        final chatGpt =
+            await (_isChatGptConnected?.call() ?? Future<bool>.value(false));
         _revision = state.revision;
         _profiles = state.profiles;
         _activeId = state.activeId;
+        _chatGptConnected = chatGpt;
+        _loaded = true;
         _notify();
       });
+
+  Future<bool> hasCredential(String id) async {
+    final profile = _findById(_profiles, id);
+    if (profile == null) return false;
+    try {
+      final secret = await _credentials.read(profile.credentialRef);
+      return secret != null && secret.trim().isNotEmpty;
+    } on Object {
+      return false;
+    }
+  }
 
   /// Creates or updates [profile].
   ///
@@ -118,6 +203,13 @@ class ConnectionsController extends ChangeNotifier {
         _revision = current.revision + 1;
         _profiles = List<EndpointProfile>.unmodifiable(nextProfiles);
         _activeId = current.activeId;
+        _loaded = true;
+        if (existing != null &&
+            (!existing.hasSameDestination(profile) ||
+                existing.discovery != profile.discovery)) {
+          _discoveredModels.remove(profile.id);
+          _statuses.remove(profile.id);
+        }
         _notify();
         return;
       }
@@ -137,6 +229,11 @@ class ConnectionsController extends ChangeNotifier {
       _revision = current.revision + 1;
       _profiles = List<EndpointProfile>.unmodifiable(nextProfiles);
       _activeId = current.activeId;
+      _loaded = true;
+      if (existing.discovery != profile.discovery) {
+        _discoveredModels.remove(profile.id);
+        _statuses.remove(profile.id);
+      }
       _notify();
     });
   }
@@ -168,6 +265,9 @@ class ConnectionsController extends ChangeNotifier {
         _revision = current.revision + 1;
         _profiles = List<EndpointProfile>.unmodifiable(nextProfiles);
         _activeId = nextActiveId;
+        _loaded = true;
+        _discoveredModels.remove(id);
+        _statuses.remove(id);
         _notify();
       });
 
@@ -198,8 +298,196 @@ class ConnectionsController extends ChangeNotifier {
         _revision = current.revision + 1;
         _profiles = current.profiles;
         _activeId = id;
+        _loaded = true;
         _notify();
       });
+
+  /// Explicitly discovers models via bounded GET requests for profile [id].
+  Future<List<DiscoveredModel>> discover(String id) async {
+    _busyIds.add(id);
+    _notify();
+    try {
+      final current = await _profilesStore.load();
+      final profile = _findById(current.profiles, id);
+      if (profile == null) {
+        throw const SaluAssistantException(SaluAssistantErrorCode.notConnected);
+      }
+
+      final models = await _discoverModels(
+        profile,
+        _credentials,
+        _effectiveTransport,
+        _effectiveFence,
+      );
+      _discoveredModels[id] = models;
+      _statuses[id] = ConnectionStatus(
+        outcome: ConnectionCheckOutcome.available,
+        message:
+            'Discovered ${models.length} ${models.length == 1 ? 'model' : 'models'}. '
+            'Generation and image input are not verified.',
+      );
+      return models;
+    } on SaluAssistantException catch (error) {
+      _statuses[id] = ConnectionStatus(
+        outcome: ConnectionCheckOutcome.unavailable,
+        message: error.message,
+        errorCode: error.code,
+      );
+      rethrow;
+    } on Object {
+      _statuses[id] = const ConnectionStatus(
+        outcome: ConnectionCheckOutcome.unavailable,
+        message: 'Model discovery failed. Check your endpoint and credentials.',
+      );
+      rethrow;
+    } finally {
+      _busyIds.remove(id);
+      _notify();
+    }
+  }
+
+  /// Runs a bounded credential/discovery availability check for [id].
+  ///
+  /// Never sends a generation POST request and explicitly discloses that
+  /// generation and image input are not verified.
+  Future<void> testConnection(String id) async {
+    _busyIds.add(id);
+    _notify();
+    try {
+      if (id == EndpointProfile.reservedChatGptId) {
+        final connected =
+            await (_isChatGptConnected?.call() ?? Future<bool>.value(false));
+        _chatGptConnected = connected;
+        if (!connected) {
+          throw const SaluAssistantException(
+            SaluAssistantErrorCode.notConnected,
+          );
+        }
+        _statuses[id] = const ConnectionStatus(
+          outcome: ConnectionCheckOutcome.available,
+          message:
+              'ChatGPT session saved locally. Generation and image input are not verified.',
+        );
+        return;
+      }
+
+      final current = await _profilesStore.load();
+      final profile = _findById(current.profiles, id);
+      if (profile == null) {
+        throw const SaluAssistantException(SaluAssistantErrorCode.notConnected);
+      }
+
+      final String? secret;
+      try {
+        secret = await _credentials.read(profile.credentialRef);
+      } on Object {
+        throw const SaluAssistantException(
+          SaluAssistantErrorCode.storageUnavailable,
+        );
+      }
+      if (secret == null || secret.trim().isEmpty) {
+        throw const SaluAssistantException(SaluAssistantErrorCode.notConnected);
+      }
+
+      if (profile.discovery == ModelDiscoveryMode.manual) {
+        final modelId = profile.modelId?.trim() ?? '';
+        if (modelId.isEmpty) {
+          throw const SaluAssistantException(
+            SaluAssistantErrorCode.requestRejected,
+          );
+        }
+        _statuses[id] = ConnectionStatus(
+          outcome: ConnectionCheckOutcome.available,
+          message: 'Credentials saved locally for manual model "$modelId". '
+              'Endpoint reachability, generation, and image input are not verified.',
+        );
+        return;
+      }
+
+      final models = await _discoverModels(
+        profile,
+        _credentials,
+        _effectiveTransport,
+        _effectiveFence,
+      );
+      _discoveredModels[id] = models;
+      _statuses[id] = ConnectionStatus(
+        outcome: ConnectionCheckOutcome.available,
+        message:
+            'Credentials present and ${models.length} ${models.length == 1 ? 'model' : 'models'} reachable. '
+            'Generation and image input are not verified.',
+      );
+    } on SaluAssistantException catch (error) {
+      _statuses[id] = ConnectionStatus(
+        outcome: ConnectionCheckOutcome.unavailable,
+        message: error.message,
+        errorCode: error.code,
+      );
+      rethrow;
+    } on Object {
+      _statuses[id] = const ConnectionStatus(
+        outcome: ConnectionCheckOutcome.unavailable,
+        message:
+            'Connection check failed. Generation and image input are not verified.',
+      );
+      rethrow;
+    } finally {
+      _busyIds.remove(id);
+      _notify();
+    }
+  }
+
+  /// Signs into ChatGPT if configured, leaving previous state intact on failure.
+  Future<void> connectChatGpt() async {
+    _busyIds.add(EndpointProfile.reservedChatGptId);
+    _notify();
+    try {
+      _onInvalidate?.call();
+      final signIn = _signInChatGpt;
+      if (signIn == null) {
+        throw StateError('ChatGPT sign-in is not configured.');
+      }
+      await signIn();
+      _chatGptConnected =
+          await (_isChatGptConnected?.call() ?? Future<bool>.value(true));
+      if (_chatGptConnected) {
+        _statuses[EndpointProfile.reservedChatGptId] = const ConnectionStatus(
+          outcome: ConnectionCheckOutcome.available,
+          message:
+              'ChatGPT session saved locally. Generation and image input are not verified.',
+        );
+      }
+    } finally {
+      _busyIds.remove(EndpointProfile.reservedChatGptId);
+      _notify();
+    }
+  }
+
+  /// Disconnects ChatGPT and clears active selection if ChatGPT was selected.
+  Future<void> disconnectChatGpt() async {
+    _busyIds.add(EndpointProfile.reservedChatGptId);
+    _notify();
+    try {
+      _onInvalidate?.call();
+      final current = await _profilesStore.load();
+      if (current.activeId == EndpointProfile.reservedChatGptId) {
+        await _profilesStore.save(
+          expectedRevision: current.revision,
+          profiles: current.profiles,
+          activeId: null,
+        );
+        _revision = current.revision + 1;
+        _activeId = null;
+      }
+      await _signOutChatGpt?.call();
+      _chatGptConnected =
+          await (_isChatGptConnected?.call() ?? Future<bool>.value(false));
+      _statuses.remove(EndpointProfile.reservedChatGptId);
+    } finally {
+      _busyIds.remove(EndpointProfile.reservedChatGptId);
+      _notify();
+    }
+  }
 
   Future<void> _bestEffortDeleteCredential(String ref) async {
     try {

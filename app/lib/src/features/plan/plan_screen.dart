@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:salu_core/salu_core.dart' hide MealSlot;
 
+import '../../assistant/assistant.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../onboarding/planning_profile.dart';
 import 'plan_draft_preview.dart';
@@ -17,6 +18,7 @@ class PlanScreen extends StatefulWidget {
     this.store,
     this.profileStore,
     this.suggestions,
+    this.assistant,
     this.now,
     this.recipePlanning,
     this.onLogRecipe,
@@ -25,6 +27,7 @@ class PlanScreen extends StatefulWidget {
   final WeekPlanStore? store;
   final PlanningProfileStore? profileStore;
   final PlanSuggestionSource? suggestions;
+  final SaluAssistant? assistant;
   final DateTime Function()? now;
   final RecipePlanning? recipePlanning;
   final Future<void> Function(
@@ -37,12 +40,26 @@ class PlanScreen extends StatefulWidget {
 
 enum _Workspace { meals, groceries }
 
+final class _DisconnectedPlanSuggestionSource implements PlanSuggestionSource {
+  const _DisconnectedPlanSuggestionSource();
+
+  @override
+  Future<PlanDraft> suggest(
+    FoodPreferences preferences, {
+    PlanSuggestionContext? context,
+  }) =>
+      Future.error(const PlanAssistantNotConnected());
+}
+
 class _PlanScreenState extends State<PlanScreen> {
   WeekPlanStore get _store => widget.store ?? WeekPlanStore.local;
   PlanningProfileStore get _profiles =>
       widget.profileStore ?? PlanningProfileStore.local;
   PlanSuggestionSource get _suggestions =>
-      widget.suggestions ?? const AssistantPlanSuggestionSource();
+      widget.suggestions ??
+      (widget.assistant != null
+          ? AssistantPlanSuggestionSource(assistant: widget.assistant!)
+          : const _DisconnectedPlanSuggestionSource());
   DateTime get _now => (widget.now ?? DateTime.now)();
 
   final _scroll = ScrollController();
@@ -233,6 +250,12 @@ class _PlanScreenState extends State<PlanScreen> {
 
   Future<void> _requestDraft({bool useAI = true}) async {
     final plan = _plan!;
+    final providerLabel = useAI
+        ? await (widget.assistant ?? widget.recipePlanning?.assistant)
+            ?.activeProviderLabel
+        : null;
+    if (!mounted) return;
+    final destination = providerLabel ?? 'your selected AI provider';
     var text = '';
     final keep = <int>{};
     final request = await showDialog<PlanSuggestionContext>(
@@ -248,7 +271,7 @@ class _PlanScreenState extends State<PlanScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(useAI
-                        ? 'Salu sends your food preferences and request to OpenAI to choose meals. It may include recipe names, locally suggested portions and existing meal names. Weight, targets and activity stay on this device.'
+                        ? 'Salu sends your food preferences and request to $destination to choose meals. It may include recipe names, locally suggested portions and existing meal names. Weight, targets and activity stay on this device. Provider plan limits or user-funded API billing may apply.'
                         : 'Choose meals from your local recipes and declared targets. Existing meals stay in place.'),
                     if (useAI)
                       TextField(
@@ -355,7 +378,11 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     } on PlanAssistantNotConnected {
       if (mounted) {
-        _notify('Connect an assistant in Settings to request suggestions.');
+        _notify('Connect an AI provider in Settings to request suggestions.');
+      }
+    } on SaluAssistantException catch (error) {
+      if (mounted) {
+        _notify(error.message);
       }
     } catch (_) {
       if (mounted) {

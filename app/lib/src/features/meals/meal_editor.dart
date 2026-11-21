@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:salu_core/salu_core.dart';
+import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
 import '../search/food_library.dart';
@@ -23,6 +24,8 @@ class MealEditor extends StatelessWidget {
     required this.foods,
     required this.date,
     required this.newId,
+    this.activeEstimates,
+    this.estimateStatusStore,
     this.initialDescription = '',
     this.initialFood,
     this.today,
@@ -36,6 +39,8 @@ class MealEditor extends StatelessWidget {
   final PhotoMeal? meal;
   final PhotoMealRepository repository;
   final SaluAssistant assistant;
+  final ActiveMealEstimates? activeEstimates;
+  final MealEstimateStatusStore? estimateStatusStore;
   final FoodRepository foods;
   final DiaryDate date;
   final String Function() newId;
@@ -96,6 +101,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
   bool _conflict = false;
   String? _work;
   String? _error;
+  String? _providerLabel;
 
   bool get _busy => _work != null;
 
@@ -103,10 +109,22 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
   void initState() {
     super.initState();
     _initialFood = widget.editor.initialFood;
+    _loadProviderLabel();
     if (_initialFood != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _editFood(0);
       });
+    }
+  }
+
+  Future<void> _loadProviderLabel() async {
+    try {
+      final label = await widget.editor.assistant.activeProviderLabel;
+      if (mounted && label != null) {
+        setState(() => _providerLabel = label);
+      }
+    } on Object {
+      // Keep neutral fallback label if provider lookup fails.
     }
   }
 
@@ -304,12 +322,15 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       await _enterLabel(index, path);
       return;
     }
+    final label = await widget.editor.assistant.activeProviderLabel;
+    if (!mounted) return;
+    final destination = label ?? _providerLabel ?? 'your selected AI provider';
     final read = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
               title: const Text('Match this label to a food'),
-              content: const Text(
-                  'Salu can read the printed product name and nutrition. This sends only the selected label photo to OpenAI.'),
+              content: Text(
+                  'Salu can read the printed product name and nutrition. This sends only the selected label photo to $destination. Provider plan limits or user-funded API billing may apply.'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -362,7 +383,8 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       widget.editor.assistant.ask(
           instructions: mealLabelInstructions,
           prompt: 'Transcribe the selected nutrition label.',
-          images: [await encodeMealUpload(path)]);
+          images: [await encodeMealUpload(path)],
+          task: InferenceTask.labelOcr);
 
   Future<void> _enterLabel(int index, String path,
       {Map<String, dynamic>? initialResponse}) async {
@@ -377,6 +399,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       item: _items[index],
       labelPath: path,
       initial: initial,
+      providerLabel: _providerLabel,
       readLabel: () async => parseMealLabel(await _transcribeLabel(path)),
     );
     if (mounted && result != null) setState(() => _items[index] = result);
@@ -453,10 +476,13 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       }
       if (withEstimate) {
         unawaited(estimateSavedMeal(
-            meal: meal,
-            repository: repository,
-            assistant: editor.assistant,
-            newId: editor.newId));
+          meal: meal,
+          repository: repository,
+          assistant: editor.assistant,
+          newId: editor.newId,
+          activeEstimates: editor.activeEstimates,
+          statusStore: editor.estimateStatusStore,
+        ));
       }
       if (mounted) editor.onLogged?.call(meal.date);
       _saved('Saved under ${meal.slot.label} · ${meal.date.toIso()}.');
@@ -527,6 +553,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       final response = await widget.editor.assistant.ask(
         instructions: mealCorrectionInstructions,
         prompt: mealCorrectionPrompt(correction, before.slot, before.items),
+        task: InferenceTask.naturalLanguageLog,
       );
       after = parseMealCorrection(response, before.slot, before.items);
       if (after == null) {
@@ -725,8 +752,8 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                         icon: const Icon(Icons.auto_awesome_outlined),
                         label: const Text('Save with AI estimate'),
                       ),
-                      const Text(
-                        'Save with AI sends the selected meal photo and any text above to OpenAI using your ChatGPT connection. The meal is saved with any available estimates, or locally without estimates if OpenAI is unavailable.',
+                      Text(
+                        'Save with AI sends the selected meal photo and any text above to ${_providerLabel ?? 'your selected AI provider'}. Provider plan limits or user-funded API billing may apply. The meal is saved with any available estimates, or locally without estimates if the provider is unavailable.',
                       ),
                     ],
                     OutlinedButton(
@@ -790,8 +817,8 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                         counterText: '',
                       ),
                     ),
-                    const Text(
-                      'Preview with AI sends this correction, the meal slot, and current food names and amounts to OpenAI using your ChatGPT connection. No photos or meal notes are sent.',
+                    Text(
+                      'Preview with AI sends this correction, the meal slot, and current food names and amounts to ${_providerLabel ?? 'your selected AI provider'}. No photos or meal notes are sent. Provider plan limits or user-funded API billing may apply.',
                     ),
                     OutlinedButton(
                       onPressed:
@@ -826,8 +853,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
             Text(item.name, style: Theme.of(context).textTheme.titleSmall),
             Text(mealPortionText(item.portion) ?? 'Amount unknown'),
             Text(mealNutrientDetails(item.nutrients)),
-            if (item.source == 'openai-meal-estimate')
-              const Text('AI estimate'),
+            if (isAiMealEstimateSource(item.source)) const Text('AI estimate'),
             if (item.source == 'nutrition-label')
               const Text('Nutrition label values'),
             if (item.labelPath != null) const Text('Label photo attached'),

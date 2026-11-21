@@ -77,13 +77,28 @@ LabelTranscription? parseMealLabel(Map<String, dynamic> response) {
   return values.isEmpty ? null : (basis: basis, values: values);
 }
 
-List<PhotoMealItem> parseMealEstimate(Map<String, dynamic> response) {
+const String defaultMealEstimateProvenance = 'ai-meal-estimate';
+
+bool isAiMealEstimateSource(String? source) =>
+    source == defaultMealEstimateProvenance ||
+    source == 'openai-meal-estimate' ||
+    (source != null && source.endsWith('-meal-estimate'));
+
+List<PhotoMealItem> parseMealEstimate(
+  Map<String, dynamic> response, {
+  String provenance = defaultMealEstimateProvenance,
+}) {
   final rows = response['items'];
   if (rows is! List<Object?> || rows.length > 12) throw _invalidReply;
-  return [for (final row in rows) _estimatedItem(row)];
+  return [
+    for (final row in rows) _estimatedItem(row, provenance: provenance),
+  ];
 }
 
-PhotoMealItem _estimatedItem(Object? row) {
+PhotoMealItem _estimatedItem(
+  Object? row, {
+  required String provenance,
+}) {
   if (row is! Map<String, Object?>) throw _invalidReply;
   final name = _name(row['name']);
   final portion = _portion(row['portion']);
@@ -95,7 +110,7 @@ PhotoMealItem _estimatedItem(Object? row) {
       if (value is num && value.isFinite && value >= 0 && value <= 1000000) {
         values[key] = NutrientEstimated(
           value.toDouble(),
-          basis: 'openai-meal-estimate',
+          basis: provenance,
         );
       }
     }
@@ -104,7 +119,7 @@ PhotoMealItem _estimatedItem(Object? row) {
     name: name,
     portion: portion,
     nutrients: NutrientProfile(values),
-    source: 'openai-meal-estimate',
+    source: provenance,
   );
 }
 
