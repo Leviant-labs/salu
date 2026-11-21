@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -50,6 +51,7 @@ final class _InMemoryCredentialStore implements CredentialStore {
   final Map<String, String> slots = <String, String>{};
   bool failWrite = false;
   bool failDelete = false;
+  Future<void> Function(String ref)? onWrite;
 
   @override
   Future<String?> read(String ref) async => slots[ref];
@@ -58,6 +60,9 @@ final class _InMemoryCredentialStore implements CredentialStore {
   Future<void> write(String ref, String secret) async {
     SecureCredentialStore.validateRef(ref);
     SecureCredentialStore.validateSecret(secret);
+    if (onWrite != null) {
+      await onWrite!(ref);
+    }
     if (failWrite) throw StateError('write failed');
     slots[ref] = secret;
   }
@@ -423,5 +428,73 @@ void main() {
     raw.failDeleteForKeys = <String>{};
     await creds.flushPendingDeletes();
     expect(raw.values.containsKey('salu.endpoint.home.1'), isFalse);
+  });
+
+  test(
+      'overlapping ConnectionsController mutations serialize cleanly without deleting live slots or notifying after dispose',
+      () async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final profilesStore = EndpointProfilesStore(LocalDocumentStore(db));
+    final firstWriteGate = Completer<void>();
+    var writeCount = 0;
+    final creds = _InMemoryCredentialStore()
+      ..onWrite = (_) async {
+        writeCount++;
+        if (writeCount == 1) {
+          await firstWriteGate.future;
+        }
+      };
+
+    final controller = ConnectionsController(profilesStore, creds);
+    var notifications = 0;
+    controller.addListener(() => notifications++);
+
+    final firstSave = controller.saveProfile(
+      _profile(name: 'First'),
+      newKey: _testKey1,
+    );
+    final secondSave = controller.saveProfile(
+      _profile(name: 'Second', modelId: 'gpt-4.1'),
+      newKey: _testKey2,
+    );
+    final selectCall = controller.select('home');
+
+    // Allow firstSave to reach its credential write gate and confirm secondSave
+    // has not started writing yet.
+    await Future<void>.delayed(Duration.zero);
+    expect(writeCount, 1);
+
+    firstWriteGate.complete();
+    await Future.wait([firstSave, secondSave, selectCall]);
+
+    expect(controller.revision, 3);
+    expect(controller.activeId, 'home');
+    expect(controller.profiles, hasLength(1));
+    expect(controller.profiles.single.name, 'Second');
+    expect(controller.profiles.single.modelId, 'gpt-4.1');
+    expect(controller.profiles.single.credentialRef, 'salu.endpoint.home.2');
+    expect(creds.slots['salu.endpoint.home.2'], _testKey2);
+    expect(creds.slots.containsKey('salu.endpoint.home.1'), isFalse);
+
+    final stored = await profilesStore.load();
+    expect(stored.revision, controller.revision);
+    expect(stored.activeId, controller.activeId);
+    expect(stored.profiles, controller.profiles);
+
+    // Reloading into a fresh controller populates getters accurately.
+    final reloaded = ConnectionsController(profilesStore, creds);
+    await reloaded.load();
+    expect(reloaded.revision, 3);
+    expect(reloaded.activeId, 'home');
+    expect(reloaded.profiles, controller.profiles);
+
+    // Disposing while a load/select is queued never triggers notifyListeners().
+    final notificationsBeforeDispose = notifications;
+    final pendingLoad = controller.load();
+    controller.dispose();
+    await pendingLoad;
+    expect(notifications, notificationsBeforeDispose);
+    reloaded.dispose();
   });
 }
