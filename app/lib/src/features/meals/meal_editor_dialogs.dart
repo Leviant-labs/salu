@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:salu_core/salu_core.dart';
 
 import '../../assistant/assistant.dart';
+import '../../media/managed_media_store.dart';
 import 'meal_editor_ai.dart';
 import 'meal_editor_data.dart';
 
@@ -123,6 +122,7 @@ Future<PhotoMealItem?> editMealLabel(
   BuildContext context, {
   required PhotoMealItem item,
   required String labelPath,
+  required ManagedMediaStore media,
   required Future<LabelTranscription?> Function() readLabel,
   LabelTranscription? initial,
   String? providerLabel,
@@ -132,6 +132,7 @@ Future<PhotoMealItem?> editMealLabel(
       builder: (_) => _MealLabelForm(
           item: item,
           labelPath: labelPath,
+          media: media,
           readLabel: readLabel,
           initial: initial,
           providerLabel: providerLabel),
@@ -141,12 +142,14 @@ class _MealLabelForm extends StatefulWidget {
   const _MealLabelForm(
       {required this.item,
       required this.labelPath,
+      required this.media,
       required this.readLabel,
       this.initial,
       this.providerLabel});
 
   final PhotoMealItem item;
   final String labelPath;
+  final ManagedMediaStore media;
   final Future<LabelTranscription?> Function() readLabel;
   final LabelTranscription? initial;
   final String? providerLabel;
@@ -280,12 +283,12 @@ class _MealLabelFormState extends State<_MealLabelForm> {
               width: double.infinity,
               child: InteractiveViewer(
                 maxScale: 5,
-                child: Image.file(
-                  File(widget.labelPath),
+                child: ManagedMediaImage(
+                  reference: widget.labelPath,
+                  media: widget.media,
                   fit: BoxFit.contain,
                   semanticLabel: 'Nutrition label photo',
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Center(child: Text('Label photo unavailable.')),
+                  unavailableText: 'Label photo unavailable.',
                 ),
               ),
             ),

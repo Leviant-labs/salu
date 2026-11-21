@@ -1,10 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart';
 
 import '../../assistant/assistant.dart';
+import '../../media/managed_media_store.dart';
 import '../../providers.dart';
 import '../meals/meal_editor.dart';
 import '../meals/meal_editor_ai.dart';
@@ -26,6 +25,7 @@ class TodayScreen extends ConsumerWidget {
         meal: meal,
         repository: ref.read(photoMealRepositoryProvider),
         assistant: ref.read(assistantProvider),
+        media: ref.read(managedMediaStoreProvider),
         activeEstimates: ref.read(activeMealEstimatesProvider),
         estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
         foods: ref.read(foodRepositoryProvider),
@@ -233,6 +233,7 @@ class TodayScreen extends ConsumerWidget {
                     meal: meal,
                     repository: ref.read(photoMealRepositoryProvider),
                     assistant: ref.read(assistantProvider),
+                    media: ref.read(managedMediaStoreProvider),
                     newId: ref.read(idGeneratorProvider).next,
                     activeEstimates: ref.read(activeMealEstimatesProvider),
                     statusStore: ref.read(mealEstimateStatusStoreProvider),
@@ -342,13 +343,13 @@ class _MealCard extends ConsumerWidget {
             if (path != null)
               AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Image.file(
-                  File(path),
+                child: ManagedMediaImage(
+                  reference: path,
+                  media: ref.watch(managedMediaStoreProvider),
                   fit: BoxFit.cover,
                   cacheWidth: 1200,
                   semanticLabel: '${meal.slot.label} photo',
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Center(child: Text('Meal photo unavailable')),
+                  unavailableText: 'Meal photo unavailable',
                 ),
               ),
             Padding(

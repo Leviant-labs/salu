@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/src/features/meals/meal_editor.dart';
 import 'package:salu/src/features/meals/meal_editor_ai.dart';
 import 'package:salu/src/features/meals/meal_editor_data.dart';
 import 'package:salu/src/features/meals/meal_editor_dialogs.dart';
+import 'package:salu/src/media/managed_media_store.dart';
 import 'package:salu_core/salu_core.dart';
 
 import 'meal_editor_fakes.dart';
@@ -272,6 +275,10 @@ void main() {
                 context,
                 item: item,
                 labelPath: '/tmp/label.jpg',
+                media: ManagedMediaStore(
+                  directory: () async => Directory.systemTemp,
+                  newId: () => 'test-label',
+                ),
                 initial: initial,
                 readLabel: () async => initial,
               );

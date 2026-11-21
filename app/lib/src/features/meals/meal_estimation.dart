@@ -3,6 +3,7 @@ import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
+import '../../media/managed_media_store.dart';
 import 'meal_editor_ai.dart';
 import 'meal_editor_images.dart';
 
@@ -36,6 +37,7 @@ Future<void> estimateSavedMeal({
   required PhotoMeal meal,
   required PhotoMealRepository repository,
   required SaluAssistant assistant,
+  required ManagedMediaStore media,
   required String Function() newId,
   ActiveMealEstimates? activeEstimates,
   MealEstimateStatusStore? statusStore,
@@ -52,7 +54,8 @@ Future<void> estimateSavedMeal({
         instructions: mealEstimateInstructions,
         prompt: mealEstimatePrompt(meal.caption),
         images: [
-          if (meal.photoPath case final path?) await encodeMealUpload(path),
+          if (meal.photoPath case final path?)
+            await encodeMealUpload(path, media: media),
         ],
         task: InferenceTask.mealPhoto,
         requestId: meal.id,

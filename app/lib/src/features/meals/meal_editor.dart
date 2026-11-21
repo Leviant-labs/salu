@@ -1,12 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
+import '../../media/managed_media_store.dart';
 import '../search/food_library.dart';
 import 'meal_editor_ai.dart';
 import 'meal_editor_data.dart';
@@ -24,6 +25,7 @@ class MealEditor extends StatelessWidget {
     required this.foods,
     required this.date,
     required this.newId,
+    this.media,
     this.activeEstimates,
     this.estimateStatusStore,
     this.initialDescription = '',
@@ -39,6 +41,7 @@ class MealEditor extends StatelessWidget {
   final PhotoMeal? meal;
   final PhotoMealRepository repository;
   final SaluAssistant assistant;
+  final ManagedMediaStore? media;
   final ActiveMealEstimates? activeEstimates;
   final MealEstimateStatusStore? estimateStatusStore;
   final FoodRepository foods;
@@ -79,11 +82,17 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
   );
   late final _correction =
       TextEditingController(text: widget.editor.initialCorrection);
+  late final ManagedMediaStore _media = widget.editor.media ??
+      ManagedMediaStore(
+        directory: getApplicationSupportDirectory,
+        newId: widget.editor.newId,
+      );
   final _picker = ImagePicker();
   final _draftImages = <String>{};
   // If a write throws, its outcome could be unknown. Keep any affected file
   // rather than deleting evidence that the repository may already reference.
   final _protectedImages = <String>{};
+  List<XFile> _recoveredPickerImages = const [];
 
   late MealSlot _slot = _original?.slot ??
       widget.editor.initialSlot ??
@@ -110,11 +119,53 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     super.initState();
     _initialFood = widget.editor.initialFood;
     _loadProviderLabel();
+    if (_original == null) {
+      _checkLostPickerImages();
+    }
     if (_initialFood != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _editFood(0);
       });
     }
+  }
+
+  Future<void> _checkLostPickerImages() async {
+    try {
+      final recovered = await _media.recoverLostPickerImages();
+      if (mounted && recovered.isNotEmpty) {
+        setState(() => _recoveredPickerImages = recovered);
+      }
+    } on Object {
+      // Lost-data recovery is best-effort and never blocks editing.
+    }
+  }
+
+  Future<void> _attachRecoveredPhoto() async {
+    if (_busy || _recoveredPickerImages.isEmpty) return;
+    final recovered = _recoveredPickerImages.first;
+    _start('Attaching recovered photo…');
+    try {
+      final ref = await _media.importImage(recovered);
+      if (!mounted) {
+        await _media.removeUnreferenced(ref, _protectedImages);
+        return;
+      }
+      _draftImages.add(ref);
+      setState(() {
+        _photoPath = ref;
+        _recoveredPickerImages = const [];
+      });
+    } catch (_) {
+      _showError(
+        'Could not attach the recovered photo. Try choosing a photo again.',
+      );
+    } finally {
+      _finish();
+    }
+  }
+
+  void _discardRecoveredPhotos() {
+    setState(() => _recoveredPickerImages = const []);
   }
 
   Future<void> _loadProviderLabel() async {
@@ -131,7 +182,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
   @override
   void dispose() {
     for (final path in _draftImages.difference(_protectedImages)) {
-      unawaited(discardMealImage(path));
+      unawaited(_media.removeUnreferenced(path, _protectedImages));
     }
     _caption.dispose();
     _correction.dispose();
@@ -166,9 +217,9 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
         requestFullMetadata: false,
       );
       if (photo == null || !mounted) return null;
-      final path = await storeMealImage(photo, widget.editor.newId());
+      final path = await _media.importImage(photo);
       if (!mounted) {
-        await discardMealImage(path);
+        await _media.removeUnreferenced(path, _protectedImages);
         return null;
       }
       _draftImages.add(path);
@@ -383,7 +434,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       widget.editor.assistant.ask(
           instructions: mealLabelInstructions,
           prompt: 'Transcribe the selected nutrition label.',
-          images: [await encodeMealUpload(path)],
+          images: [await encodeMealUpload(path, media: _media)],
           task: InferenceTask.labelOcr);
 
   Future<void> _enterLabel(int index, String path,
@@ -398,6 +449,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       context,
       item: _items[index],
       labelPath: path,
+      media: _media,
       initial: initial,
       providerLabel: _providerLabel,
       readLabel: () async => parseMealLabel(await _transcribeLabel(path)),
@@ -420,7 +472,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     _protectedImages.removeAll(paths);
     if (!mounted) {
       for (final path in paths) {
-        unawaited(discardMealImage(path));
+        unawaited(_media.removeUnreferenced(path, _protectedImages));
       }
     }
   }
@@ -479,6 +531,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
           meal: meal,
           repository: repository,
           assistant: editor.assistant,
+          media: _media,
           newId: editor.newId,
           activeEstimates: editor.activeEstimates,
           statusStore: editor.estimateStatusStore,
@@ -629,18 +682,53 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                     ),
                     const SizedBox(height: 12),
                   ],
+                  if (_recoveredPickerImages.isNotEmpty) ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Recovered photo from interrupted picker',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Attach it to this meal draft or discard it. Nothing is uploaded or saved automatically.',
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                FilledButton(
+                                  onPressed:
+                                      _busy ? null : _attachRecoveredPhoto,
+                                  child: const Text('Attach to meal'),
+                                ),
+                                TextButton(
+                                  onPressed:
+                                      _busy ? null : _discardRecoveredPhotos,
+                                  child: const Text('Discard'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (_photoPath case final path?)
                     SizedBox(
                       height: 216,
-                      child: Image.file(
-                        File(path),
+                      child: ManagedMediaImage(
+                        reference: path,
+                        media: _media,
                         fit: BoxFit.contain,
                         cacheWidth: 1200,
                         semanticLabel: 'Meal photo',
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                          child: Text('Meal photo unavailable.'),
-                        ),
+                        unavailableText: 'Meal photo unavailable.',
                       ),
                     ),
                   if (isNew) ...[

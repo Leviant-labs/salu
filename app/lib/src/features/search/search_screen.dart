@@ -54,6 +54,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       builder: (_) => MealEditor(
         repository: ref.read(photoMealRepositoryProvider),
         assistant: ref.read(assistantProvider),
+        media: ref.read(managedMediaStoreProvider),
         activeEstimates: ref.read(activeMealEstimatesProvider),
         estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
         foods: ref.read(foodRepositoryProvider),

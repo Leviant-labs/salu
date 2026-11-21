@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
@@ -14,6 +15,7 @@ import 'features/meals/meal_estimation.dart';
 import 'features/onboarding/planning_profile.dart';
 import 'features/plan/week_plan.dart';
 import 'features/settings/connections_controller.dart';
+import 'media/managed_media_store.dart';
 
 final operationFenceProvider = Provider<OperationFence>((ref) {
   final fence = OperationFence();
@@ -104,6 +106,13 @@ final activeMealEstimatesProvider =
 
 final photoMealRepositoryProvider = Provider<PhotoMealRepository>(
   (ref) => DriftPhotoMealRepository(ref.watch(databaseProvider)),
+);
+
+final managedMediaStoreProvider = Provider<ManagedMediaStore>(
+  (ref) => ManagedMediaStore(
+    directory: getApplicationSupportDirectory,
+    newId: ref.read(idGeneratorProvider).next,
+  ),
 );
 
 final diarySelectionProvider = StateProvider<DiaryDate?>((ref) => null);

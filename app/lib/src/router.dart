@@ -89,6 +89,7 @@ final appRouter = GoRouter(
                                   repository:
                                       ref.read(photoMealRepositoryProvider),
                                   assistant: ref.read(assistantProvider),
+                                  media: ref.read(managedMediaStoreProvider),
                                   activeEstimates:
                                       ref.read(activeMealEstimatesProvider),
                                   estimateStatusStore:
