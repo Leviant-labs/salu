@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart' hide Column, isNotNull, isNull;
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/src/assistant/assistant.dart';
 import 'package:salu/src/assistant/credential_store.dart';
 import 'package:salu/src/assistant/endpoint_transport.dart';
+import 'package:salu/src/assistant/inference_gateway.dart';
 import 'package:salu/src/assistant/model_discovery.dart';
 import 'package:salu/src/assistant/operation_fence.dart';
 import 'package:salu/src/features/meals/meal_editor_ai.dart';
@@ -31,6 +34,7 @@ const _fakeKey2 = 'sk-test-connections-bravo-222222';
 final class _MemoryCredentialStore implements CredentialStore {
   final Map<String, String> slots = <String, String>{};
   bool failWrite = false;
+  Future<void> Function(String ref)? onWrite;
 
   @override
   Future<String?> read(String ref) async => slots[ref];
@@ -39,6 +43,9 @@ final class _MemoryCredentialStore implements CredentialStore {
   Future<void> write(String ref, String secret) async {
     SecureCredentialStore.validateRef(ref);
     SecureCredentialStore.validateSecret(secret);
+    if (onWrite != null) {
+      await onWrite!(ref);
+    }
     if (failWrite) throw StateError('secure write failed');
     slots[ref] = secret;
   }
@@ -51,6 +58,40 @@ final class _MemoryCredentialStore implements CredentialStore {
 
   @override
   Future<void> clearSaluCredentials() async => slots.clear();
+}
+
+final class _CasConflictInterceptor extends QueryInterceptor {
+  int conflictOnPutRemaining = 0;
+  bool _expectPutSelect = false;
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) async {
+    final rows = await super.runSelect(executor, statement, args);
+    if (statement.contains('local_documents') &&
+        args.contains('endpoint-connections') &&
+        rows.isNotEmpty) {
+      if (conflictOnPutRemaining <= 0) {
+        _expectPutSelect = false;
+        return rows;
+      }
+      if (_expectPutSelect) {
+        conflictOnPutRemaining--;
+        _expectPutSelect = false;
+        return [
+          {
+            ...rows.first,
+            'revision': (rows.first['revision'] as int) + 1,
+          },
+        ];
+      }
+      _expectPutSelect = true;
+    }
+    return rows;
+  }
 }
 
 final class _FakeEntryRepository implements EntryRepository {
@@ -744,4 +785,258 @@ void main() {
     await _scrollAndTap(tester, find.text('Manage AI connections'));
     expect(find.text('AI connections'), findsOneWidget);
   });
+
+  test(
+      'disconnectChatGpt serializes with profile store and checks CAS save result',
+      () async {
+    final interceptor = _CasConflictInterceptor();
+    final db = AppDatabase(NativeDatabase.memory().interceptWith(interceptor));
+    addTearDown(db.close);
+    final profilesStore = EndpointProfilesStore(LocalDocumentStore(db));
+    final writeGate = Completer<void>();
+    var gatingWrites = false;
+    final creds = _MemoryCredentialStore()
+      ..onWrite = (_) async {
+        if (gatingWrites && !writeGate.isCompleted) {
+          await writeGate.future;
+        }
+      };
+
+    var chatGptConnected = true;
+    var signOutCalls = 0;
+    final controller = ConnectionsController(
+      profilesStore,
+      creds,
+      isChatGptConnected: () async => chatGptConnected,
+      signOutChatGpt: () async {
+        signOutCalls++;
+        chatGptConnected = false;
+      },
+    );
+    addTearDown(controller.dispose);
+
+    await controller.select(EndpointProfile.reservedChatGptId);
+    expect(controller.activeId, EndpointProfile.reservedChatGptId);
+
+    // 1. Repeated CAS failures throw StateError without claiming disconnected.
+    interceptor.conflictOnPutRemaining = 10;
+    await expectLater(controller.disconnectChatGpt(), throwsStateError);
+    interceptor.conflictOnPutRemaining = 0;
+    expect(controller.activeId, EndpointProfile.reservedChatGptId);
+    expect(signOutCalls, 0);
+
+    // 2. Single CAS mismatch retries cleanly.
+    interceptor.conflictOnPutRemaining = 1;
+    await controller.disconnectChatGpt();
+    expect(signOutCalls, 1);
+    expect(controller.activeId, isNull);
+    expect(controller.chatGptConnected, isFalse);
+
+    // 3. Serialization waits for an in-flight profile save before
+    //    disconnecting ChatGPT.
+    chatGptConnected = true;
+    await controller.select(EndpointProfile.reservedChatGptId);
+    gatingWrites = true;
+    final saveFuture = controller.saveProfile(
+      EndpointProfile(
+        id: 'p1',
+        name: 'Profile 1',
+        protocol: EndpointProtocol.openaiChat,
+        apiRoot: Uri.parse('https://one.example/v1'),
+        credentialRef: 'salu.endpoint.p1.1',
+      ),
+      newKey: _fakeKey1,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    var disconnectFinished = false;
+    final disconnectFuture = controller.disconnectChatGpt().whenComplete(() {
+      disconnectFinished = true;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(disconnectFinished, isFalse);
+    expect(signOutCalls, 1);
+
+    writeGate.complete();
+    await saveFuture;
+    await disconnectFuture;
+
+    expect(signOutCalls, 2);
+    expect(controller.activeId, isNull);
+    expect(controller.chatGptConnected, isFalse);
+    expect((await profilesStore.load()).activeId, isNull);
+    expect(controller.profiles, hasLength(1));
+  });
+
+  test(
+      'removeProfile during in-flight discover/testConnection leaves no ghost status or models',
+      () async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final profilesStore = EndpointProfilesStore(LocalDocumentStore(db));
+    final creds = _MemoryCredentialStore();
+    final fence = OperationFence();
+
+    final discoverStarted = Completer<void>();
+    final discoverFinish = Completer<List<DiscoveredModel>>();
+    final controller = ConnectionsController(
+      profilesStore,
+      creds,
+      fence: fence,
+      onInvalidate: fence.invalidate,
+      discoverModelsCallback: (_, __, ___, ____) {
+        if (!discoverStarted.isCompleted) discoverStarted.complete();
+        return discoverFinish.future;
+      },
+    );
+    addTearDown(controller.dispose);
+
+    await controller.saveProfile(
+      EndpointProfile(
+        id: 'p1',
+        name: 'Ephemeral',
+        protocol: EndpointProtocol.openaiChat,
+        apiRoot: Uri.parse('https://ephemeral.example/v1'),
+        credentialRef: 'salu.endpoint.p1.1',
+      ),
+      newKey: _fakeKey1,
+    );
+
+    final pendingDiscover = controller.discover('p1');
+    await discoverStarted.future;
+
+    await controller.removeProfile('p1');
+    expect(controller.profiles, isEmpty);
+
+    discoverFinish.complete(
+      const [DiscoveredModel(id: 'm1', name: 'Model 1')],
+    );
+    await pendingDiscover;
+
+    expect(controller.discoveredModelsFor('p1'), isEmpty);
+    expect(controller.statusFor('p1').outcome, ConnectionCheckOutcome.untested);
+
+    // Same protection holds when an in-flight testConnection errors after removal.
+    await controller.saveProfile(
+      EndpointProfile(
+        id: 'p2',
+        name: 'Ephemeral 2',
+        protocol: EndpointProtocol.openaiChat,
+        apiRoot: Uri.parse('https://ephemeral2.example/v1'),
+        credentialRef: 'salu.endpoint.p2.1',
+      ),
+      newKey: _fakeKey1,
+    );
+    final testStarted = Completer<void>();
+    final testFinish = Completer<List<DiscoveredModel>>();
+    final controller2 = ConnectionsController(
+      profilesStore,
+      creds,
+      fence: fence,
+      onInvalidate: fence.invalidate,
+      discoverModelsCallback: (_, __, ___, ____) {
+        if (!testStarted.isCompleted) testStarted.complete();
+        return testFinish.future;
+      },
+    );
+    addTearDown(controller2.dispose);
+    await controller2.load();
+
+    final pendingTest = controller2.testConnection('p2');
+    await testStarted.future;
+    await controller2.removeProfile('p2');
+    testFinish.completeError(
+      const SaluAssistantException(SaluAssistantErrorCode.timeout),
+    );
+    await expectLater(pendingTest, throwsA(isA<SaluAssistantException>()));
+    expect(
+      controller2.statusFor('p2').outcome,
+      ConnectionCheckOutcome.untested,
+    );
+  });
+
+  testWidgets(
+      'disconnecting an active BYOK profile in SettingsScreen clears activeId without signing out ChatGPT',
+      (tester) async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final profilesStore = EndpointProfilesStore(LocalDocumentStore(db));
+    final creds = _MemoryCredentialStore();
+    final fence = OperationFence();
+    var chatGptConnected = true;
+    var chatGptSignOutCalls = 0;
+
+    final controller = ConnectionsController(
+      profilesStore,
+      creds,
+      fence: fence,
+      onInvalidate: fence.invalidate,
+      isChatGptConnected: () async => chatGptConnected,
+      signOutChatGpt: () async {
+        chatGptSignOutCalls++;
+        chatGptConnected = false;
+      },
+    );
+
+    await controller.saveProfile(
+      EndpointProfile(
+        id: 'p1',
+        name: 'Claude Endpoint',
+        protocol: EndpointProtocol.anthropicMessages,
+        apiRoot: Uri.parse('https://api.anthropic.com/v1'),
+        credentialRef: 'salu.endpoint.p1.1',
+        modelId: 'claude-sonnet-4-5',
+      ),
+      newKey: _fakeKey1,
+    );
+    await controller.select('p1');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          credentialStoreProvider.overrideWithValue(creds),
+          operationFenceProvider.overrideWithValue(fence),
+          connectionsControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SettingsScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active: Claude Endpoint'), findsOneWidget);
+    await _scrollAndTap(tester, find.text('Disconnect'));
+
+    expect(controller.activeId, isNull);
+    expect((await profilesStore.load()).activeId, isNull);
+    expect(chatGptConnected, isTrue);
+    expect(chatGptSignOutCalls, 0);
+    expect(find.text('Not connected'), findsOneWidget);
+
+    // Also verify InferenceGateway.disconnect() preserves ChatGPT when a BYOK
+    // profile was active.
+    await controller.select('p1');
+    final fakeChatGptKeyStore = _FakeKeyStore('chatgpt-session-present');
+    final gateway = InferenceGateway(
+      profiles: profilesStore,
+      credentials: creds,
+      transport: EndpointTransport(),
+      fence: fence,
+      chatGpt: SaluAssistant(keyStore: fakeChatGptKeyStore, fence: fence),
+    );
+    await gateway.disconnect();
+    expect((await profilesStore.load()).activeId, isNull);
+    expect(await fakeChatGptKeyStore.read(), 'chatgpt-session-present');
+  });
+}
+
+final class _FakeKeyStore implements SaluAssistantKeyStore {
+  _FakeKeyStore(this._value);
+  String? _value;
+  @override
+  Future<String?> read() async => _value;
+  @override
+  Future<void> write(String key) async => _value = key;
+  @override
+  Future<void> delete() async => _value = null;
 }

@@ -205,23 +205,26 @@ final class InferenceGateway {
   }
 
   /// Invalidates in-flight fenced operations, clears active selection, and
-  /// disconnects any ChatGPT session.
+  /// disconnects ChatGPT when it was the active connection.
   Future<void> disconnect() async {
     _fence.invalidate();
-    await _clearActiveSelection();
-    await _chatGpt.disconnect();
+    final previousActiveId = await _clearActiveSelection();
+    if (previousActiveId == EndpointProfile.reservedChatGptId) {
+      await _chatGpt.disconnect();
+    }
   }
 
-  Future<void> _clearActiveSelection() async {
+  Future<String?> _clearActiveSelection() async {
     for (var attempt = 0; attempt < 3; attempt++) {
       final state = await _profiles.load();
-      if (state.activeId == null) return;
+      if (state.activeId == null) return null;
+      final previousActiveId = state.activeId;
       final saved = await _profiles.save(
         expectedRevision: state.revision,
         profiles: state.profiles,
         activeId: null,
       );
-      if (saved) return;
+      if (saved) return previousActiveId;
     }
     throw const SaluAssistantException(
       SaluAssistantErrorCode.storageUnavailable,

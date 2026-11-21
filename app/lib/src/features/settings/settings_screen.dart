@@ -46,8 +46,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (controller.activeId == EndpointProfile.reservedChatGptId) {
         await controller.disconnectChatGpt();
       } else {
-        await ref.read(assistantProvider).disconnect();
-        await controller.load();
+        await controller.select(null);
       }
     } on SaluAssistantException catch (error) {
       if (mounted) {

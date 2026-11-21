@@ -72,6 +72,7 @@ class ConnectionsController extends ChangeNotifier {
   final Map<String, List<DiscoveredModel>> _discoveredModels =
       <String, List<DiscoveredModel>>{};
   final Map<String, ConnectionStatus> _statuses = <String, ConnectionStatus>{};
+  final Map<String, int> _profileGenerations = <String, int>{};
 
   List<EndpointProfile> get profiles => _profiles;
   String? get activeId => _activeId;
@@ -207,6 +208,7 @@ class ConnectionsController extends ChangeNotifier {
         if (existing != null &&
             (!existing.hasSameDestination(profile) ||
                 existing.discovery != profile.discovery)) {
+          _bumpProfileGeneration(profile.id);
           _discoveredModels.remove(profile.id);
           _statuses.remove(profile.id);
         }
@@ -231,6 +233,7 @@ class ConnectionsController extends ChangeNotifier {
       _activeId = current.activeId;
       _loaded = true;
       if (existing.discovery != profile.discovery) {
+        _bumpProfileGeneration(profile.id);
         _discoveredModels.remove(profile.id);
         _statuses.remove(profile.id);
       }
@@ -246,6 +249,7 @@ class ConnectionsController extends ChangeNotifier {
         if (target == null) return;
 
         _onInvalidate?.call();
+        _bumpProfileGeneration(id);
 
         final nextProfiles =
             current.profiles.where((p) => p.id != id).toList(growable: false);
@@ -302,12 +306,32 @@ class ConnectionsController extends ChangeNotifier {
         _notify();
       });
 
+  int _profileGeneration(String id) => _profileGenerations[id] ?? 0;
+
+  void _bumpProfileGeneration(String id) {
+    _profileGenerations[id] = _profileGeneration(id) + 1;
+  }
+
+  bool _canRecordProfileResult(String id, int epoch, int startGeneration) =>
+      !_disposed &&
+      _effectiveFence.isCurrent(epoch) &&
+      _profileGeneration(id) == startGeneration &&
+      _findById(_profiles, id) != null;
+
   /// Explicitly discovers models via bounded GET requests for profile [id].
   Future<List<DiscoveredModel>> discover(String id) async {
     _busyIds.add(id);
     _notify();
+    final epoch = _effectiveFence.capture();
+    final startGeneration = _profileGeneration(id);
     try {
       final current = await _profilesStore.load();
+      if (!_loaded && !_disposed) {
+        _revision = current.revision;
+        _profiles = current.profiles;
+        _activeId = current.activeId;
+        _loaded = true;
+      }
       final profile = _findById(current.profiles, id);
       if (profile == null) {
         throw const SaluAssistantException(SaluAssistantErrorCode.notConnected);
@@ -319,26 +343,33 @@ class ConnectionsController extends ChangeNotifier {
         _effectiveTransport,
         _effectiveFence,
       );
-      _discoveredModels[id] = models;
-      _statuses[id] = ConnectionStatus(
-        outcome: ConnectionCheckOutcome.available,
-        message:
-            'Discovered ${models.length} ${models.length == 1 ? 'model' : 'models'}. '
-            'Generation and image input are not verified.',
-      );
+      if (_canRecordProfileResult(id, epoch, startGeneration)) {
+        _discoveredModels[id] = models;
+        _statuses[id] = ConnectionStatus(
+          outcome: ConnectionCheckOutcome.available,
+          message:
+              'Discovered ${models.length} ${models.length == 1 ? 'model' : 'models'}. '
+              'Generation and image input are not verified.',
+        );
+      }
       return models;
     } on SaluAssistantException catch (error) {
-      _statuses[id] = ConnectionStatus(
-        outcome: ConnectionCheckOutcome.unavailable,
-        message: error.message,
-        errorCode: error.code,
-      );
+      if (_canRecordProfileResult(id, epoch, startGeneration)) {
+        _statuses[id] = ConnectionStatus(
+          outcome: ConnectionCheckOutcome.unavailable,
+          message: error.message,
+          errorCode: error.code,
+        );
+      }
       rethrow;
     } on Object {
-      _statuses[id] = const ConnectionStatus(
-        outcome: ConnectionCheckOutcome.unavailable,
-        message: 'Model discovery failed. Check your endpoint and credentials.',
-      );
+      if (_canRecordProfileResult(id, epoch, startGeneration)) {
+        _statuses[id] = const ConnectionStatus(
+          outcome: ConnectionCheckOutcome.unavailable,
+          message:
+              'Model discovery failed. Check your endpoint and credentials.',
+        );
+      }
       rethrow;
     } finally {
       _busyIds.remove(id);
@@ -353,25 +384,37 @@ class ConnectionsController extends ChangeNotifier {
   Future<void> testConnection(String id) async {
     _busyIds.add(id);
     _notify();
+    final epoch = _effectiveFence.capture();
+    final startGeneration = _profileGeneration(id);
     try {
       if (id == EndpointProfile.reservedChatGptId) {
         final connected =
             await (_isChatGptConnected?.call() ?? Future<bool>.value(false));
-        _chatGptConnected = connected;
+        if (!_disposed && _effectiveFence.isCurrent(epoch)) {
+          _chatGptConnected = connected;
+        }
         if (!connected) {
           throw const SaluAssistantException(
             SaluAssistantErrorCode.notConnected,
           );
         }
-        _statuses[id] = const ConnectionStatus(
-          outcome: ConnectionCheckOutcome.available,
-          message:
-              'ChatGPT session saved locally. Generation and image input are not verified.',
-        );
+        if (!_disposed && _effectiveFence.isCurrent(epoch)) {
+          _statuses[id] = const ConnectionStatus(
+            outcome: ConnectionCheckOutcome.available,
+            message:
+                'ChatGPT session saved locally. Generation and image input are not verified.',
+          );
+        }
         return;
       }
 
       final current = await _profilesStore.load();
+      if (!_loaded && !_disposed) {
+        _revision = current.revision;
+        _profiles = current.profiles;
+        _activeId = current.activeId;
+        _loaded = true;
+      }
       final profile = _findById(current.profiles, id);
       if (profile == null) {
         throw const SaluAssistantException(SaluAssistantErrorCode.notConnected);
@@ -396,11 +439,13 @@ class ConnectionsController extends ChangeNotifier {
             SaluAssistantErrorCode.requestRejected,
           );
         }
-        _statuses[id] = ConnectionStatus(
-          outcome: ConnectionCheckOutcome.available,
-          message: 'Credentials saved locally for manual model "$modelId". '
-              'Endpoint reachability, generation, and image input are not verified.',
-        );
+        if (_canRecordProfileResult(id, epoch, startGeneration)) {
+          _statuses[id] = ConnectionStatus(
+            outcome: ConnectionCheckOutcome.available,
+            message: 'Credentials saved locally for manual model "$modelId". '
+                'Endpoint reachability, generation, and image input are not verified.',
+          );
+        }
         return;
       }
 
@@ -410,26 +455,48 @@ class ConnectionsController extends ChangeNotifier {
         _effectiveTransport,
         _effectiveFence,
       );
-      _discoveredModels[id] = models;
-      _statuses[id] = ConnectionStatus(
-        outcome: ConnectionCheckOutcome.available,
-        message:
-            'Credentials present and ${models.length} ${models.length == 1 ? 'model' : 'models'} reachable. '
-            'Generation and image input are not verified.',
-      );
+      if (_canRecordProfileResult(id, epoch, startGeneration)) {
+        _discoveredModels[id] = models;
+        _statuses[id] = ConnectionStatus(
+          outcome: ConnectionCheckOutcome.available,
+          message:
+              'Credentials present and ${models.length} ${models.length == 1 ? 'model' : 'models'} reachable. '
+              'Generation and image input are not verified.',
+        );
+      }
     } on SaluAssistantException catch (error) {
-      _statuses[id] = ConnectionStatus(
-        outcome: ConnectionCheckOutcome.unavailable,
-        message: error.message,
-        errorCode: error.code,
-      );
+      if (id == EndpointProfile.reservedChatGptId) {
+        if (!_disposed && _effectiveFence.isCurrent(epoch)) {
+          _statuses[id] = ConnectionStatus(
+            outcome: ConnectionCheckOutcome.unavailable,
+            message: error.message,
+            errorCode: error.code,
+          );
+        }
+      } else if (_canRecordProfileResult(id, epoch, startGeneration)) {
+        _statuses[id] = ConnectionStatus(
+          outcome: ConnectionCheckOutcome.unavailable,
+          message: error.message,
+          errorCode: error.code,
+        );
+      }
       rethrow;
     } on Object {
-      _statuses[id] = const ConnectionStatus(
-        outcome: ConnectionCheckOutcome.unavailable,
-        message:
-            'Connection check failed. Generation and image input are not verified.',
-      );
+      if (id == EndpointProfile.reservedChatGptId) {
+        if (!_disposed && _effectiveFence.isCurrent(epoch)) {
+          _statuses[id] = const ConnectionStatus(
+            outcome: ConnectionCheckOutcome.unavailable,
+            message:
+                'Connection check failed. Generation and image input are not verified.',
+          );
+        }
+      } else if (_canRecordProfileResult(id, epoch, startGeneration)) {
+        _statuses[id] = const ConnectionStatus(
+          outcome: ConnectionCheckOutcome.unavailable,
+          message:
+              'Connection check failed. Generation and image input are not verified.',
+        );
+      }
       rethrow;
     } finally {
       _busyIds.remove(id);
@@ -469,20 +536,44 @@ class ConnectionsController extends ChangeNotifier {
     _notify();
     try {
       _onInvalidate?.call();
-      final current = await _profilesStore.load();
-      if (current.activeId == EndpointProfile.reservedChatGptId) {
-        await _profilesStore.save(
-          expectedRevision: current.revision,
-          profiles: current.profiles,
-          activeId: null,
+      await _serialized(() async {
+        for (var attempt = 0; attempt < 3; attempt++) {
+          final current = await _profilesStore.load();
+          if (current.activeId != EndpointProfile.reservedChatGptId) {
+            _revision = current.revision;
+            _profiles = current.profiles;
+            _activeId = current.activeId;
+            _loaded = true;
+            return;
+          }
+          final saved = await _profilesStore.save(
+            expectedRevision: current.revision,
+            profiles: current.profiles,
+            activeId: null,
+          );
+          if (saved) {
+            _revision = current.revision + 1;
+            _profiles = current.profiles;
+            _activeId = null;
+            _loaded = true;
+            return;
+          }
+        }
+        throw StateError(
+          'Endpoint profiles changed concurrently; retry disconnect.',
         );
-        _revision = current.revision + 1;
-        _activeId = null;
+      });
+      try {
+        await _signOutChatGpt?.call();
+      } finally {
+        try {
+          _chatGptConnected =
+              await (_isChatGptConnected?.call() ?? Future<bool>.value(false));
+        } on Object {
+          // Do not mask sign-out failures with a connection-check error.
+        }
+        _statuses.remove(EndpointProfile.reservedChatGptId);
       }
-      await _signOutChatGpt?.call();
-      _chatGptConnected =
-          await (_isChatGptConnected?.call() ?? Future<bool>.value(false));
-      _statuses.remove(EndpointProfile.reservedChatGptId);
     } finally {
       _busyIds.remove(EndpointProfile.reservedChatGptId);
       _notify();
