@@ -327,6 +327,30 @@ abstract class AppLocalizations {
   /// **'partial'**
   String get todayPartialLabel;
 
+  /// No description provided for @todayIncludesTrace.
+  ///
+  /// In en, this message translates to:
+  /// **'includes trace'**
+  String get todayIncludesTrace;
+
+  /// No description provided for @mealEditorEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit meal'**
+  String get mealEditorEditTitle;
+
+  /// No description provided for @mealEditorSaveMeal.
+  ///
+  /// In en, this message translates to:
+  /// **'Save meal'**
+  String get mealEditorSaveMeal;
+
+  /// No description provided for @mealEditorSaveChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get mealEditorSaveChanges;
+
   /// No description provided for @todayEstimatedSemantics.
   ///
   /// In en, this message translates to:

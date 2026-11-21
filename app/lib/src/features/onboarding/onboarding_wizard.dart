@@ -3,6 +3,8 @@ import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
 import '../../data_transfer/data_write_gate.dart';
+import '../../theme/glass_surface.dart';
+import '../../theme/tactile_controls.dart';
 import 'onboarding_controller.dart';
 import 'onboarding_pages.dart';
 
@@ -374,8 +376,11 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
                           ),
                           SafeArea(
                             top: false,
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                            child: GlassSurface(
+                              borderRadius: BorderRadius.zero,
+                              accentBorder: true,
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 10, 16, 14),
                               child: Wrap(
                                 alignment: WrapAlignment.spaceBetween,
                                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -405,12 +410,12 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
                                           child: const Text('Skip this step'),
                                         ),
                                       if (step == OnboardingStep.review)
-                                        FilledButton(
+                                        SaluTactileButton(
                                           onPressed: busy ? null : _onFinish,
                                           child: const Text('Finish setup'),
                                         )
                                       else
-                                        FilledButton(
+                                        SaluTactileButton(
                                           onPressed: busy ? null : _onNext,
                                           child: const Text('Next'),
                                         ),

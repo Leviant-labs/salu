@@ -1,12 +1,19 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/l10n/app_localizations.dart';
+import 'package:salu/src/features/plan/cooked_batches.dart';
+import 'package:salu/src/features/plan/recipe_library.dart';
+import 'package:salu/src/features/search/food_library.dart';
+import 'package:salu/src/features/search/library_controller.dart';
+import 'package:salu/src/features/search/library_screen.dart';
 import 'package:salu/src/features/today/diary_summary.dart';
 import 'package:salu/src/features/today/today_screen.dart';
 import 'package:salu/src/providers.dart';
 import 'package:salu/src/theme/salu_theme.dart';
 import 'package:salu_core/salu_core.dart';
+import 'package:salu_data/salu_data.dart';
 
 final class _EmptyEntries implements EntryRepository {
   @override
@@ -17,6 +24,14 @@ final class _EmptyEntries implements EntryRepository {
 
   @override
   Future<LoggedEntry?> findByRequestId(String requestId) async => null;
+}
+
+final class _EmptyFoods implements FoodRepository {
+  @override
+  Future<Food?> findById(String id) async => null;
+
+  @override
+  Future<List<Food>> search(String query, {int limit = 25}) async => const [];
 }
 
 void main() {
@@ -131,5 +146,75 @@ void main() {
     );
 
     semantics.dispose();
+  });
+
+  testWidgets(
+      'LibraryScreen renders at 320x640 with 200% text scaling in pt_PT without overflow',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final docs = LocalDocumentStore(db);
+    final controller = LibraryController(
+      foodLibrary: FoodLibrary(docs),
+      recipeLibrary: RecipeLibrary(_EmptyFoods(), docs),
+      cookedBatches: CookedBatches(docs),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('pt', 'PT'),
+        theme: SaluTheme.light(),
+        darkTheme: SaluTheme.dark(),
+        themeMode: ThemeMode.dark,
+        supportedLocales: const [Locale('en'), Locale('pt', 'PT')],
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2.0),
+          ),
+          child: child!,
+        ),
+        home: LibraryScreen(
+          controller: controller,
+          onUseFood: (_) {},
+          onUseMeal: (_) {},
+          onUseRecipe: (_) {},
+          onUseBatch: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Alimentos'), findsOneWidget);
+    expect(find.text('Sobras'), findsOneWidget);
+  });
+
+  testWidgets('DiarySummary localizes includes trace in pt_PT', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('pt', 'PT'),
+        theme: SaluTheme.dark(),
+        supportedLocales: const [Locale('en'), Locale('pt', 'PT')],
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: Scaffold(
+          body: DiarySummary(
+            profiles: [
+              NutrientProfile({
+                NutrientKey.fatG: NutrientTrace(),
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('inclui vestígios'), findsOneWidget);
   });
 }

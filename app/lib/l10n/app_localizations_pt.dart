@@ -128,6 +128,18 @@ class AppLocalizationsPt extends AppLocalizations {
   String get todayPartialLabel => 'parcial';
 
   @override
+  String get todayIncludesTrace => 'inclui vestígios';
+
+  @override
+  String get mealEditorEditTitle => 'Editar refeição';
+
+  @override
+  String get mealEditorSaveMeal => 'Guardar refeição';
+
+  @override
+  String get mealEditorSaveChanges => 'Guardar alterações';
+
+  @override
   String get todayEstimatedSemantics => 'estimado';
 
   @override
@@ -362,6 +374,18 @@ class AppLocalizationsPtPt extends AppLocalizationsPt {
 
   @override
   String get todayPartialLabel => 'parcial';
+
+  @override
+  String get todayIncludesTrace => 'inclui vestígios';
+
+  @override
+  String get mealEditorEditTitle => 'Editar refeição';
+
+  @override
+  String get mealEditorSaveMeal => 'Guardar refeição';
+
+  @override
+  String get mealEditorSaveChanges => 'Guardar alterações';
 
   @override
   String get todayEstimatedSemantics => 'estimado';

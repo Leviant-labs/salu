@@ -274,8 +274,9 @@ class _SaluTactileToggleState extends State<SaluTactileToggle> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _enabled ? _toggle : null,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 56, minHeight: 48),
+          child: SizedBox(
+            width: 56,
+            height: 48,
             child: Center(
               child: AnimatedContainer(
                 duration: duration,

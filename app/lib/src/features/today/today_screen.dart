@@ -254,7 +254,8 @@ class TodayScreen extends ConsumerWidget {
         for (final slot in MealSlot.values)
           if (photos.any((meal) => meal.slot == slot)) ...[
             const SizedBox(height: 16),
-            Text(slot.label, style: theme.textTheme.titleLarge),
+            Text(localizedMealSlotLabel(l10n, slot),
+                style: theme.textTheme.titleLarge),
             for (final meal in photos.where((meal) => meal.slot == slot))
               _MealCard(
                 meal: meal,
@@ -411,6 +412,7 @@ class _EstimateRecovery extends StatelessWidget {
   Widget build(BuildContext context) {
     final code = errorCode;
     final theme = Theme.of(context);
+    final l10n = saluL10n(context);
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Column(
@@ -418,7 +420,7 @@ class _EstimateRecovery extends StatelessWidget {
         children: [
           if (code != null)
             Text(
-              SaluAssistantException(code).message,
+              localizedErrorMessage(l10n, code),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -431,13 +433,13 @@ class _EstimateRecovery extends StatelessWidget {
                   code == SaluAssistantErrorCode.authenticationFailed)
                 FilledButton.tonal(
                   onPressed: openConnections,
-                  child: const Text('Open AI connections'),
+                  child: Text(l10n.todayOpenConnections),
                 )
               else if (code == SaluAssistantErrorCode.quotaExceeded ||
                   code == SaluAssistantErrorCode.rateLimited)
                 OutlinedButton(
                   onPressed: openConnections,
-                  child: const Text('Switch or check connection'),
+                  child: Text(l10n.todaySwitchConnection),
                 ),
               TextButton(
                 onPressed: retry,

@@ -12,6 +12,7 @@ String formatNutrientRollup(
   Iterable<NutrientProfile> profiles,
   NutrientKey key, {
   String partialLabel = 'partial',
+  String includesTraceLabel = 'includes trace',
 }) {
   var sum = NutrientSum.zero;
   var known = false;
@@ -23,7 +24,7 @@ String formatNutrientRollup(
   if (!known || !sum.value.isFinite) return '-- ${key.unit}';
   return '${sum.includesEstimate ? '≈' : ''}${mealNumberText(sum.value)} ${key.unit}'
       '${sum.isComplete ? '' : ' · $partialLabel'}'
-      '${sum.includesTrace ? ' · includes trace' : ''}';
+      '${sum.includesTrace ? ' · $includesTraceLabel' : ''}';
 }
 
 /// Builds a screen-reader-friendly description of a rolled-up nutrient value
@@ -114,6 +115,7 @@ class DiarySummary extends StatelessWidget {
                     profiles,
                     key,
                     partialLabel: l10n.todayPartialLabel,
+                    includesTraceLabel: l10n.todayIncludesTrace,
                   ),
                   semanticText: semanticNutrientRollup(
                     profiles,

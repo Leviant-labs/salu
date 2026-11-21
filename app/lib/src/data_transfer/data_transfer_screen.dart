@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/onboarding/onboarding_screen.dart';
 import '../providers.dart';
+import '../theme/tactile_controls.dart';
 import 'archive_service.dart';
 import 'csv_export.dart';
 
@@ -415,7 +416,7 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
               decoration: const InputDecoration(labelText: 'Confirm password'),
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Include photos'),
               subtitle: Text(
@@ -423,8 +424,12 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
                     ? 'Includes meal and label photos'
                     : 'Records only (smaller file)',
               ),
-              value: _includeMedia,
-              onChanged: (value) => setState(() => _includeMedia = value),
+              trailing: SaluTactileToggle(
+                value: _includeMedia,
+                semanticLabel: 'Include photos',
+                onChanged: (value) => setState(() => _includeMedia = value),
+              ),
+              onTap: () => setState(() => _includeMedia = !_includeMedia),
             ),
             if (_error != null)
               Padding(
@@ -442,7 +447,7 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        SaluTactileButton(
           onPressed: _submit,
           child: const Text('Create backup'),
         ),

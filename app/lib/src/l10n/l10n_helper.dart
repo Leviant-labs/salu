@@ -35,7 +35,9 @@ String localizedErrorMessage(
       SaluAssistantErrorCode.authenticationFailed => l10n.errorAuthFailed,
       SaluAssistantErrorCode.quotaExceeded => l10n.errorQuotaExceeded,
       SaluAssistantErrorCode.rateLimited => l10n.errorRateLimited,
-      _ => l10n.errorGeneric,
+      _ => l10n.localeName.startsWith('pt')
+          ? l10n.errorGeneric
+          : SaluAssistantException(code).message,
     };
 
 /// Maps a [NutrientKey] to its localized display label.

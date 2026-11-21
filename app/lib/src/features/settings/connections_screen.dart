@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../assistant/assistant.dart';
 import '../../assistant/model_discovery.dart';
+import '../../theme/tactile_controls.dart';
 import 'connections_controller.dart';
 
 /// Manage AI connections: ChatGPT plan sign-in and named API endpoint profiles.
@@ -862,16 +863,24 @@ class _EndpointProfileEditorScreenState
               validator: _validateApiRoot,
             ),
             const SizedBox(height: 8),
-            SwitchListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              value: _allowInsecureLocal,
-              onChanged: _saving
-                  ? null
-                  : (value) => setState(() => _allowInsecureLocal = value),
               title: const Text('Allow local network HTTP'),
               subtitle: const Text(
                 'Permits http:// only for loopback and private network addresses. Public HTTP stays blocked.',
               ),
+              trailing: SaluTactileToggle(
+                value: _allowInsecureLocal,
+                semanticLabel: 'Allow local network HTTP',
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _allowInsecureLocal = value),
+              ),
+              onTap: _saving
+                  ? null
+                  : () => setState(
+                        () => _allowInsecureLocal = !_allowInsecureLocal,
+                      ),
             ),
             if (destinationChanged) ...[
               const SizedBox(height: 8),

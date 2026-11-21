@@ -8,6 +8,7 @@ import 'package:salu_core/salu_core.dart';
 import '../../assistant/assistant.dart';
 import '../../assistant/operation_fence.dart';
 import '../../data_transfer/data_write_gate.dart';
+import '../../l10n/l10n_helper.dart';
 import '../../media/managed_media_store.dart';
 import '../../theme/glass_surface.dart';
 import '../../theme/tactile_controls.dart';
@@ -766,11 +767,14 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
         (_photoPath != null ||
             _caption.text.trim().isNotEmpty ||
             _items.isNotEmpty);
+    final l10n = saluL10n(context);
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
         resizeToAvoidBottomInset: true,
-        appBar: AppBar(title: Text(isNew ? 'Log a meal' : 'Edit meal')),
+        appBar: AppBar(
+          title: Text(isNew ? l10n.todayLogMeal : l10n.mealEditorEditTitle),
+        ),
         body: Column(
           children: [
             Expanded(
@@ -1113,12 +1117,14 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                               ? () => _saveNew(withEstimate: false)
                               : null,
                           child: Text(
-                            _items.isEmpty ? 'Save without AI' : 'Save meal',
+                            _items.isEmpty
+                                ? l10n.actionSaveWithoutAi
+                                : l10n.mealEditorSaveMeal,
                           ),
                         )
                       : SaluTactileButton(
                           onPressed: _busy || _conflict ? null : _saveChanges,
-                          child: const Text('Save changes'),
+                          child: Text(l10n.mealEditorSaveChanges),
                         ),
                 ),
               ),

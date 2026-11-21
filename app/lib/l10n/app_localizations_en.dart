@@ -125,6 +125,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get todayPartialLabel => 'partial';
 
   @override
+  String get todayIncludesTrace => 'includes trace';
+
+  @override
+  String get mealEditorEditTitle => 'Edit meal';
+
+  @override
+  String get mealEditorSaveMeal => 'Save meal';
+
+  @override
+  String get mealEditorSaveChanges => 'Save changes';
+
+  @override
   String get todayEstimatedSemantics => 'estimated';
 
   @override

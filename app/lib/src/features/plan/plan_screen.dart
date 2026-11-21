@@ -3,6 +3,7 @@ import 'package:salu_core/salu_core.dart' hide MealSlot;
 
 import '../../assistant/assistant.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../../theme/tactile_controls.dart';
 import '../onboarding/planning_profile.dart';
 import 'plan_controller.dart';
 import 'plan_draft_preview.dart';
@@ -770,10 +771,10 @@ class _PlanScreenState extends State<PlanScreen> {
           runSpacing: 4,
           children: [
             if (!meals)
-              FilledButton.icon(
+              SaluTactileButton(
                 onPressed: _busy ? null : () => _editGrocery(),
                 icon: const Icon(Icons.add),
-                label: const Text('Add grocery item'),
+                child: const Text('Add grocery item'),
               ),
             OutlinedButton.icon(
               onPressed: _busy ? null : _editPreferences,
