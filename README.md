@@ -6,8 +6,9 @@ disclosed at the point of use. Salu has no account or backend.
 
 Spec: [`docs/product-spec.md`](docs/product-spec.md) (product contract and
 release gates), [`docs/architecture.md`](docs/architecture.md) (working slice and
-target design), and [`docs/nutrition-engine-spec.md`](docs/nutrition-engine-spec.md)
-(calculation mechanics).
+target design), [`docs/nutrition-engine-spec.md`](docs/nutrition-engine-spec.md)
+(calculation mechanics), and [`docs/data-lifecycle.md`](docs/data-lifecycle.md)
+(encrypted backups, CSV export, and resumable local data deletion).
 
 ## Layout
 

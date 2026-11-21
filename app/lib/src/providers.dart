@@ -12,6 +12,7 @@ import 'assistant/endpoint_transport.dart';
 import 'assistant/inference_gateway.dart';
 import 'assistant/operation_fence.dart';
 import 'data_transfer/archive_service.dart';
+import 'data_transfer/data_reset_service.dart';
 import 'data_transfer/data_write_gate.dart';
 import 'features/meals/meal_estimation.dart';
 import 'features/onboarding/planning_profile.dart';
@@ -41,6 +42,24 @@ final archiveServiceProvider = Provider<ArchiveService>(
     stagingDirectory: getTemporaryDirectory,
     markerDirectory: getApplicationSupportDirectory,
     onRestored: () {
+      ref.invalidate(todayMealsProvider);
+      ref.invalidate(todayEntriesProvider);
+      ref.invalidate(connectionsControllerProvider);
+    },
+  ),
+);
+
+final dataResetServiceProvider = Provider<DataResetService>(
+  (ref) => DataResetService(
+    data: ref.watch(userDataRepositoryProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    fence: ref.watch(operationFenceProvider),
+    gate: ref.watch(dataWriteGateProvider),
+    supportDirectory: getApplicationSupportDirectory,
+    stagingDirectory: getTemporaryDirectory,
+    onReset: () {
+      ref.read(activeMealEstimatesProvider).reset();
+      ref.read(diarySelectionProvider.notifier).state = null;
       ref.invalidate(todayMealsProvider);
       ref.invalidate(todayEntriesProvider);
       ref.invalidate(connectionsControllerProvider);

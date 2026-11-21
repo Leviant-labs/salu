@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:salu_core/salu_core.dart' as core;
 
+import 'data_transfer/data_transfer_screen.dart';
 import 'features/plan/plan_screen.dart';
 import 'features/plan/plan_suggestions.dart';
 import 'features/plan/recipe_library.dart';
@@ -24,6 +25,10 @@ import 'providers.dart';
 final appRouter = GoRouter(
   initialLocation: '/today',
   routes: [
+    GoRoute(
+      path: DataTransferScreen.routeName,
+      builder: (context, state) => const DataTransferScreen(),
+    ),
     GoRoute(
       path: OnboardingScreen.routeName,
       builder: (context, state) => Consumer(

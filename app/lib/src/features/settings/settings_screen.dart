@@ -5,6 +5,7 @@ import 'package:salu_core/salu_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../assistant/assistant.dart';
+import '../../data_transfer/data_transfer_screen.dart';
 import '../../providers.dart';
 import '../onboarding/onboarding_screen.dart';
 import 'connections_controller.dart';
@@ -90,21 +91,59 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           subtitle:
               'Records are stored in a local SQLite database on this device. '
               'There is no account and no backend that holds your diary.',
-          children: const [
-            _Row(
+          children: [
+            const _Row(
               icon: Icons.phone_iphone,
               title: 'On-device storage',
               detail: 'active',
             ),
-            _Row(
-              icon: Icons.file_download_outlined,
-              title: 'CSV and full-archive export',
-              detail: 'not built yet',
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Encrypted backup & restore'),
+              subtitle:
+                  const Text('Save or restore a password-protected archive'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  Navigator.of(context, rootNavigator: true).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DataTransferScreen(),
+                ),
+              ),
             ),
-            _Row(
-              icon: Icons.delete_outline,
-              title: 'Delete all data',
-              detail: 'not built yet',
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.table_chart_outlined),
+              title: const Text('Export CSV'),
+              subtitle:
+                  const Text('Plaintext spreadsheet of diary nutrition rows'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  Navigator.of(context, rootNavigator: true).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DataTransferScreen(),
+                ),
+              ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.delete_outline,
+                color: theme.colorScheme.error,
+              ),
+              title: Text(
+                'Delete local data',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              subtitle: const Text(
+                  'Erase diary, photos, plans, and local credentials'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  Navigator.of(context, rootNavigator: true).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DataTransferScreen(),
+                ),
+              ),
             ),
           ],
         ),
