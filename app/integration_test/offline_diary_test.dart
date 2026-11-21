@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:salu/src/app.dart';
 import 'package:salu/src/features/today/today_screen.dart';
+import 'package:salu/src/media/managed_media_store.dart';
 import 'package:salu/src/providers.dart';
 import 'package:salu_core/salu_core.dart';
+import 'package:salu_data/salu_data.dart';
 
 import 'support/test_database.dart';
 
@@ -169,5 +172,95 @@ void main() {
     expect(savedItem.portion?.amount, 65);
     expect(savedItem.portion?.unit, MealUnit.grams);
     expect(savedItem.nutrients.hasAnyKnownValue, isFalse);
+  });
+
+  testWidgets(
+      'move, delete, undo, and DB restart keep one meal ID, no duplicate intake, and intact photo',
+      (tester) async {
+    final fixture = await DeviceTestDatabase.create();
+    addTearDown(fixture.dispose);
+    final mediaDir =
+        await Directory.systemTemp.createTemp('salu_move_undo_media_');
+    addTearDown(() async {
+      if (await mediaDir.exists()) {
+        await mediaDir.delete(recursive: true);
+      }
+    });
+    final sourceFile = File('${mediaDir.path}/source.jpg');
+    final photoBytes = <int>[0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4];
+    await sourceFile.writeAsBytes(photoBytes);
+
+    var mediaSeq = 0;
+    final media = ManagedMediaStore(
+      directory: () async => mediaDir,
+      newId: () => 'photo_${++mediaSeq}',
+    );
+    final photoRef = await media.importImage(XFile(sourceFile.path));
+
+    final today = DiaryDate.parse('2026-11-19');
+    final yesterday = today.addDays(-1);
+    final meal = PhotoMeal(
+      id: 'meal-move-undo',
+      date: today,
+      slot: MealSlot.dinner,
+      caption: 'Grilled salmon',
+      createdAt: DateTime.utc(2026, 11, 19, 19, 0),
+      recordedOffsetMinutes: -300,
+      photoPath: photoRef,
+      items: [
+        PhotoMealItem(
+          id: 'item-salmon',
+          name: 'Salmon fillet',
+          portion: MealPortion(180, MealUnit.grams),
+          nutrients: NutrientProfile({
+            NutrientKey.energyKcal: NutrientReported(360),
+          }),
+        ),
+      ],
+    );
+    expect(await fixture.meals.saveNew(meal), isTrue);
+
+    final mutations =
+        MealMutationRepository(fixture.db, clock: const SystemClock());
+    final moved = await mutations.apply(MoveMeal(
+      requestId: 'req-move',
+      mealId: meal.id,
+      expectedRevision: 1,
+      date: yesterday,
+      today: today,
+    ));
+    expect(moved.status, MutationStatus.applied);
+
+    final deleted = await mutations.apply(DeleteMeal(
+      requestId: 'req-delete',
+      mealId: meal.id,
+      expectedRevision: moved.meal!.revision,
+    ));
+    expect(deleted.status, MutationStatus.applied);
+    expect(deleted.undoToken, isNotNull);
+
+    final undone = await mutations.apply(UndoMeal(
+      requestId: 'req-undo',
+      undoToken: deleted.undoToken!,
+    ));
+    expect(undone.status, MutationStatus.applied);
+
+    await fixture.reopen();
+
+    final todayMeals = await fixture.meals.listFor(today);
+    final yesterdayMeals = await fixture.meals.listFor(yesterday);
+    expect(todayMeals, isEmpty);
+    expect(yesterdayMeals, hasLength(1));
+
+    final reloaded = yesterdayMeals.single;
+    expect(reloaded.id, 'meal-move-undo');
+    expect(reloaded.revision, greaterThan(moved.meal!.revision));
+    expect(reloaded.photoPath, photoRef);
+    expect(reloaded.items.single.name, 'Salmon fillet');
+
+    final resolvedPhoto = await media.resolve(reloaded.photoPath!);
+    expect(resolvedPhoto, isNotNull);
+    expect(await resolvedPhoto!.exists(), isTrue);
+    expect(await resolvedPhoto.readAsBytes(), photoBytes);
   });
 }

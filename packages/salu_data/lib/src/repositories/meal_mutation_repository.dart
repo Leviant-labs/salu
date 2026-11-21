@@ -235,7 +235,7 @@ final class MealMutationRepository {
 
     final nowMs = _clock.nowUtc().millisecondsSinceEpoch;
     final expiresAtMs = deleteRow.undoExpiresAtMs;
-    if (expiresAtMs == null || nowMs > expiresAtMs) {
+    if (expiresAtMs == null || nowMs >= expiresAtMs) {
       return const MealMutationResult(status: MutationStatus.expired);
     }
 
