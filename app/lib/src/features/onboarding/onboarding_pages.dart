@@ -157,6 +157,114 @@ class StartingPointOnboardingPage extends StatelessWidget {
   }
 }
 
+class StrictAllergenSelector extends StatelessWidget {
+  const StrictAllergenSelector({
+    required this.controller,
+    required this.enabled,
+    this.onChanged,
+    super.key,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final VoidCallback? onChanged;
+
+  static List<String> _tokens(String text) => text
+      .split(RegExp(r'[,;\n]'))
+      .map((term) => term.trim())
+      .where((term) => term.isNotEmpty)
+      .toList();
+
+  void _toggle(AllergenId id, bool selected) {
+    final tokens = _tokens(controller.text);
+    final next = <String>[];
+    if (selected) {
+      next.addAll(tokens);
+      if (!tokens.any((term) => resolveAllergen(term) == id)) {
+        next.add(id.label);
+      }
+    } else {
+      for (final term in tokens) {
+        if (resolveAllergen(term) != id) {
+          next.add(term);
+        }
+      }
+    }
+    final text = next.join(', ');
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    onChanged?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final tokens = _tokens(value.text);
+        final parsed = resolveStrictAllergens(tokens);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Strict allergen categories',
+              style: theme.textTheme.labelLarge,
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final id in AllergenId.values)
+                  FilterChip(
+                    label: Text(id.label),
+                    selected: parsed.known.contains(id),
+                    onSelected:
+                        enabled ? (selected) => _toggle(id, selected) : null,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: controller,
+              enabled: enabled,
+              minLines: 1,
+              maxLines: 2,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Strict allergies (optional)',
+                hintText:
+                    'Select categories above or separate terms with commas. Recipes with unknown allergy information are excluded.',
+                counterText: '',
+              ),
+            ),
+            if (parsed.unresolved.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Unrecognized strict allergy term(s): ${parsed.unresolved.join(', ')}. '
+                  'Select a canonical category above or move ingredient names to "Must exclude" — recipes stay excluded until resolved.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
 class PreferencesOnboardingPage extends StatelessWidget {
   const PreferencesOnboardingPage({
     required this.likesController,
@@ -224,18 +332,9 @@ class PreferencesOnboardingPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        TextFormField(
+        StrictAllergenSelector(
           controller: allergensController,
           enabled: enabled,
-          minLines: 1,
-          maxLines: 2,
-          maxLength: 500,
-          decoration: const InputDecoration(
-            labelText: 'Strict allergies (optional)',
-            hintText:
-                'Separate names with commas. Recipes with unknown allergy information are excluded from suggestions.',
-            counterText: '',
-          ),
         ),
       ],
     );

@@ -259,4 +259,46 @@ void main() {
       expect(save, findsOneWidget);
     },
   );
+
+  testWidgets(
+    'strict allergen category chips preserve unmapped legacy terms and warn when unresolved',
+    (tester) async {
+      final store = _MemoryProfile()
+        ..profile = const PlanningProfile(
+          preferences: FoodPreferences(strictAllergens: 'leite, kiwi'),
+          onboarded: true,
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(home: FoodPreferencesScreen(store: store)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<FilterChip>(find.widgetWithText(FilterChip, 'Milk'))
+            .selected,
+        isTrue,
+      );
+      expect(
+        find.textContaining('Unrecognized strict allergy term(s): kiwi'),
+        findsOneWidget,
+      );
+
+      // Selecting Peanut adds it while keeping both leite and unmapped kiwi.
+      await tester.ensureVisible(find.widgetWithText(FilterChip, 'Peanut'));
+      await tester.tap(find.widgetWithText(FilterChip, 'Peanut'));
+      await tester.pumpAndSettle();
+
+      // Deselecting Milk removes leite while keeping Peanut and kiwi.
+      await tester.ensureVisible(find.widgetWithText(FilterChip, 'Milk'));
+      await tester.tap(find.widgetWithText(FilterChip, 'Milk'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save preferences'));
+      await tester.pumpAndSettle();
+
+      expect(store.profile.preferences.strictAllergens, 'kiwi, Peanut');
+    },
+  );
 }

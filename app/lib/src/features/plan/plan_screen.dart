@@ -151,10 +151,30 @@ class _PlanScreenState extends State<PlanScreen> {
       final profile = await _profiles.load();
       final recipes = await planner.library.load();
       if (!mounted || !identical(plan, _plan)) return;
-      setState(
-          () => _recipes = {for (final recipe in recipes) recipe.key: recipe});
+      final byKey = {for (final recipe in recipes) recipe.key: recipe};
+      setState(() => _recipes = byKey);
+      final latest = <String, RecipeVersion>{};
+      for (final recipe in recipes) {
+        if ((latest[recipe.id]?.version ?? 0) < recipe.version) {
+          latest[recipe.id] = recipe;
+        }
+      }
+      final currentConflicts = saved?.pinned == true
+          ? findPinnedConflicts(
+                WeekPlan(plan.monday, meals: {position: saved!}),
+                byKey,
+                profile,
+              ).firstOrNull?.reasons ??
+              const <String>[]
+          : const <String>[];
       final edit = await chooseRecipe(
-          context, planner.eligible(recipes, profile), saved);
+        context,
+        planner.eligible(latest.values, profile),
+        saved,
+        ineligibleReasons: planner.ineligibilityReasons(latest.values, profile),
+        currentConflictReasons: currentConflicts,
+        onEditPreferences: _editPreferences,
+      );
       if (!mounted || edit == null || !identical(plan, _plan)) return;
       final meals = {...plan.meals};
       if (edit.meal case final meal?) {
@@ -230,12 +250,14 @@ class _PlanScreenState extends State<PlanScreen> {
     _save(plan.copyWith(groceries: next));
   }
 
-  void _editPreferences() =>
-      Navigator.of(context, rootNavigator: true).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => FoodPreferencesScreen(store: _profiles),
-        ),
-      );
+  Future<void> _editPreferences() async {
+    await Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => FoodPreferencesScreen(store: _profiles),
+      ),
+    );
+    if (mounted) await _loadProfile();
+  }
 
   Future<void> _editProfile() async {
     await Navigator.of(context, rootNavigator: true).push<void>(
@@ -332,6 +354,11 @@ class _PlanScreenState extends State<PlanScreen> {
     );
     if (!mounted || request == null || _busy) return;
     setState(() => _drafting = true);
+    List<PinnedMealConflict>? pinnedConflictsToReport;
+    ({
+      Map<RecipeVersion, List<String>> excluded,
+      List<String> unresolved,
+    })? emptyReport;
     try {
       final preferences = (await _profiles.load()).preferences;
       if (!mounted) return;
@@ -339,42 +366,66 @@ class _PlanScreenState extends State<PlanScreen> {
       if (planner != null) {
         final profile = await _profiles.load();
         final recipes = await planner.library.load();
-        final proposal = await planner.propose(plan, recipes, profile, request,
-            useAI: useAI);
         if (!mounted || !identical(plan, _plan)) return;
         setState(() =>
             _recipes = {for (final recipe in recipes) recipe.key: recipe});
+        final proposal = await planner.propose(plan, recipes, profile, request,
+            useAI: useAI);
+        if (!mounted || !identical(plan, _plan)) return;
         if (proposal.isEmpty) {
-          _notify(
-              'No eligible recipe changes were found for these slots. Your plan is unchanged.');
-          return;
+          final latest = <String, RecipeVersion>{};
+          for (final recipe in recipes) {
+            if ((latest[recipe.id]?.version ?? 0) < recipe.version) {
+              latest[recipe.id] = recipe;
+            }
+          }
+          final limit = RecipePlanning.parseCookingLimit(request.request);
+          final excluded = planner.ineligibilityReasons(
+            latest.values,
+            profile,
+            cookingLimit: limit,
+          );
+          final unresolved =
+              resolveStrictAllergens(profile.preferences.allergenItems)
+                  .unresolved;
+          if (excluded.isNotEmpty || unresolved.isNotEmpty) {
+            emptyReport = (excluded: excluded, unresolved: unresolved);
+          } else {
+            _notify(
+                'No eligible recipe changes were found for these slots. Your plan is unchanged.');
+          }
+        } else {
+          await _confirmRecipePlan(plan, {...plan.meals, ...proposal},
+              proposal.keys.toSet(), profile);
         }
-        await _confirmRecipePlan(
-            plan, {...plan.meals, ...proposal}, proposal.keys.toSet(), profile);
-        return;
-      }
-      final reply = await _suggestions.suggest(preferences,
-          context: request.isEmpty ? null : request);
-      final draft = reply.withoutMealsOn(request.keepDays);
-      if (!mounted) return;
-      if (draft.isEmpty) {
-        _notify(
-          'No suggestions were returned. You can still build your plan by hand.',
-        );
-      } else if (draft.mentionsExclusion(preferences)) {
-        _notify(
-          'The suggestions mentioned a food marked “Must exclude”. Nothing was added.',
-        );
       } else {
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => PlanDraftPreview(
-              plan: plan,
-              draft: draft,
-              onConfirm: (selected) => _confirmDraft(plan, selected),
+        final reply = await _suggestions.suggest(preferences,
+            context: request.isEmpty ? null : request);
+        final draft = reply.withoutMealsOn(request.keepDays);
+        if (!mounted) return;
+        if (draft.isEmpty) {
+          _notify(
+            'No suggestions were returned. You can still build your plan by hand.',
+          );
+        } else if (draft.mentionsExclusion(preferences)) {
+          _notify(
+            'The suggestions mentioned a food marked “Must exclude”. Nothing was added.',
+          );
+        } else {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => PlanDraftPreview(
+                plan: plan,
+                draft: draft,
+                onConfirm: (selected) => _confirmDraft(plan, selected),
+              ),
             ),
-          ),
-        );
+          );
+        }
+      }
+    } on PinnedMealConflictException catch (error) {
+      if (mounted) {
+        pinnedConflictsToReport = error.conflicts;
       }
     } on PlanAssistantNotConnected {
       if (mounted) {
@@ -390,6 +441,103 @@ class _PlanScreenState extends State<PlanScreen> {
       }
     } finally {
       if (mounted) setState(() => _drafting = false);
+    }
+    if (!mounted) return;
+    if (pinnedConflictsToReport != null) {
+      await _showPinnedConflictsDialog(pinnedConflictsToReport);
+    } else if (emptyReport != null) {
+      await _showIneligibilityDialog(
+        title: 'No eligible recipes found',
+        excluded: emptyReport.excluded,
+        unresolved: emptyReport.unresolved,
+      );
+    }
+  }
+
+  Future<void> _showPinnedConflictsDialog(
+      List<PinnedMealConflict> conflicts) async {
+    final openPreferences = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pinned meal conflicts with exclusions'),
+        scrollable: true,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'A pinned meal cannot override your strict allergies or exclusions. Replace, unpin, or remove the conflicting slot, or update your food preferences.',
+            ),
+            const SizedBox(height: 10),
+            for (final conflict in conflicts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${conflict.position.slot.label}: ${conflict.meal.name} — ${conflict.reasons.map(describeIneligibilityReason).join(' ')}',
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Dismiss'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Edit food preferences'),
+          ),
+        ],
+      ),
+    );
+    if (openPreferences == true && mounted) {
+      await _editPreferences();
+    }
+  }
+
+  Future<void> _showIneligibilityDialog({
+    required String title,
+    required Map<RecipeVersion, List<String>> excluded,
+    required List<String> unresolved,
+  }) async {
+    final openPreferences = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        scrollable: true,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (unresolved.isNotEmpty) ...[
+              Text(
+                'Unrecognized strict allergy term(s): ${unresolved.join(', ')}. Select a canonical allergen category or move ingredient names to "Must exclude".',
+              ),
+              const SizedBox(height: 8),
+            ],
+            for (final entry in excluded.entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '${entry.key.name}: ${entry.value.map(describeIneligibilityReason).join(' ')}',
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Edit food preferences'),
+          ),
+        ],
+      ),
+    );
+    if (openPreferences == true && mounted) {
+      await _editPreferences();
     }
   }
 
@@ -427,6 +575,18 @@ class _PlanScreenState extends State<PlanScreen> {
             'The food exclusions changed. Review a new plan before saving.');
         return;
       }
+    }
+    final beforeConflicts = findPinnedConflicts(before, _recipes, current);
+    final afterConflicts = findPinnedConflicts(next, _recipes, current);
+    final changedHasConflict =
+        afterConflicts.any((conflict) => changes.contains(conflict.position));
+    final resolvedExistingConflict = beforeConflicts.isNotEmpty &&
+        afterConflicts.length < beforeConflicts.length &&
+        !changedHasConflict;
+    if (afterConflicts.isNotEmpty && !resolvedExistingConflict) {
+      _notify(
+          'A pinned meal conflicts with your strict allergies or exclusions. Update or unpin it before saving.');
+      return;
     }
     await _save(next);
   }
@@ -654,7 +814,7 @@ class _PlanScreenState extends State<PlanScreen> {
         ),
         if ((_drafting && !_reviewing) || _saving)
           const LinearProgressIndicator(),
-        if (meals)
+        if (meals) ...[
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Planning profile'),
@@ -666,6 +826,90 @@ class _PlanScreenState extends State<PlanScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: _busy ? null : _editProfile,
           ),
+          if (widget.recipePlanning != null && _profile != null) ...[
+            if (findPinnedConflicts(plan, _recipes, _profile!)
+                case final conflicts when conflicts.isNotEmpty)
+              Card(
+                key: const ValueKey('pinned-conflicts-card'),
+                color: Theme.of(context).colorScheme.errorContainer,
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pinned meal conflict',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      for (final conflict in conflicts)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '${conflict.position.slot.label}: ${conflict.meal.name} — ${conflict.reasons.map(describeIneligibilityReason).join(' ')}',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        'Tap a conflicting slot to replace, unpin, or remove it.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _busy ? null : _editPreferences,
+                          child: const Text('Edit food preferences'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (resolveStrictAllergens(_profile!.preferences.allergenItems)
+                    .unresolved
+                case final unresolved when unresolved.isNotEmpty)
+              Card(
+                key: const ValueKey('unresolved-allergens-card'),
+                color: Theme.of(context).colorScheme.errorContainer,
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Unrecognized strict allergy term(s): ${unresolved.join(', ')}. '
+                        'Select a canonical category or move ingredient names to "Must exclude" — recipes stay excluded until resolved.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _busy ? null : _editPreferences,
+                          child: const Text('Edit food preferences'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ],
         const SizedBox(height: 12),
         if (meals)
           for (var day = 0; day < 7; day++) _dayCard(context, plan, day)

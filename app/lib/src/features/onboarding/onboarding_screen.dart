@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:salu_data/salu_data.dart';
 
+import 'onboarding_pages.dart';
 import 'onboarding_wizard.dart';
 import 'planning_profile.dart';
 
@@ -348,23 +349,18 @@ class _ProfileEditorState extends State<_ProfileEditor> {
               hint: 'Separate foods with commas or new lines',
               maxLines: 4,
             ),
-            _textField(_allergens, 'Strict allergies (optional)',
-                hint:
-                    'Separate names with commas. Recipes with unknown allergy information are excluded from suggestions.',
-                maxLines: 2),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: Text(
-                _saving
-                    ? 'Saving…'
-                    : widget.preferencesOnly
-                        ? 'Save preferences'
-                        : 'Save profile',
-              ),
+            const SizedBox(height: 12),
+            StrictAllergenSelector(
+              controller: _allergens,
+              enabled: !_saving,
+              onChanged: () {
+                if (_saved) setState(() => _saved = false);
+              },
             ),
-            if (_saved)
+            if (_saved) ...[
+              const SizedBox(height: 12),
               const Text('Saved on this device.', textAlign: TextAlign.center),
+            ],
           ],
         ),
       ),
@@ -378,6 +374,24 @@ class _ProfileEditorState extends State<_ProfileEditor> {
             widget.preferencesOnly ? 'Food preferences' : 'Planning profile',
           ),
         ),
+        bottomNavigationBar: _loading || _loadFailed
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: Text(
+                      _saving
+                          ? 'Saving…'
+                          : widget.preferencesOnly
+                              ? 'Save preferences'
+                              : 'Save profile',
+                    ),
+                  ),
+                ),
+              ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _loadFailed

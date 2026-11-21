@@ -333,6 +333,16 @@ class _RecipeFormState extends State<_RecipeForm> {
   late var minutes = widget.previous?.prepMinutes.toString() ?? '15';
   late var method = widget.previous?.method ?? '';
   late final ingredients = <RecipeIngredient>[...?widget.previous?.ingredients];
+  late var _declaredAllergens = widget.previous?.allergens != null;
+  late final Set<AllergenId> _selectedAllergens = {
+    for (final tag in widget.previous?.allergens ?? const <String>{})
+      if (resolveAllergen(tag) case final id?) id,
+  };
+  late final List<String> _legacyAllergenTags = [
+    for (final tag in widget.previous?.allergens ?? const <String>{})
+      if (resolveAllergen(tag) == null) tag,
+  ];
+  late var _allergenSource = widget.previous?.allergenSource ?? '';
   Future<void> _ingredient() async {
     final food = await findMealFood(context, widget.library.foods);
     if (food == null || !mounted) return;
@@ -408,6 +418,78 @@ class _RecipeFormState extends State<_RecipeForm> {
                     onPressed: _ingredient,
                     icon: const Icon(Icons.add),
                     label: const Text('Add catalogue ingredient in grams')),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Allergen declaration',
+                      style: Theme.of(context).textTheme.titleSmall),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Unknown status'),
+                      selected: !_declaredAllergens,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() => _declaredAllergens = false);
+                        }
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('Declared allergens'),
+                      selected: _declaredAllergens,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() => _declaredAllergens = true);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (!_declaredAllergens)
+                  const Text(
+                      'Unknown status: excluded when strict allergies are active.')
+                else ...[
+                  const Text(
+                      'Select allergens in listed ingredients. Leaving all unchecked declares none of the 14 canonical allergens (not a cross-contamination guarantee).'),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final id in AllergenId.values)
+                        FilterChip(
+                          label: Text(id.label),
+                          selected: _selectedAllergens.contains(id),
+                          onSelected: (selected) => setState(() {
+                            if (selected) {
+                              _selectedAllergens.add(id);
+                            } else {
+                              _selectedAllergens.remove(id);
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                  if (_selectedAllergens.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child:
+                          Text('Declared: none of the 14 canonical allergens.'),
+                    ),
+                  TextFormField(
+                    initialValue: _allergenSource,
+                    decoration: const InputDecoration(
+                      labelText: 'Allergen source / provenance',
+                      hintText: 'e.g. Checked product ingredient labels',
+                    ),
+                    onChanged: (value) => _allergenSource = value,
+                  ),
+                ],
               ])),
           actions: [
             TextButton(
@@ -428,7 +510,18 @@ class _RecipeFormState extends State<_RecipeForm> {
                                 prepMinutes: mealNumber(minutes)!.round(),
                                 servings: mealNumber(servings)!,
                                 finishedGrams: mealNumber(yieldText),
-                                ingredients: ingredients));
+                                ingredients: ingredients,
+                                allergens: _declaredAllergens
+                                    ? {
+                                        for (final id in _selectedAllergens)
+                                          id.name,
+                                        ..._legacyAllergenTags,
+                                      }
+                                    : null,
+                                allergenSource: _declaredAllergens &&
+                                        _allergenSource.trim().isNotEmpty
+                                    ? _allergenSource.trim()
+                                    : null));
                       },
                 child: const Text('Save recipe'))
           ]);

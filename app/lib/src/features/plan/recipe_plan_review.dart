@@ -112,8 +112,14 @@ String _difference(double delta, String unit) => delta.abs() < .01
     ? ' (on target)'
     : ' (${displayAmount(delta.abs())} $unit ${delta < 0 ? 'below' : 'above'})';
 
-Future<({PlannedMeal? meal})?> chooseRecipe(BuildContext context,
-    List<RecipeVersion> recipes, PlannedMeal? current) async {
+Future<({PlannedMeal? meal})?> chooseRecipe(
+  BuildContext context,
+  List<RecipeVersion> recipes,
+  PlannedMeal? current, {
+  Map<RecipeVersion, List<String>> ineligibleReasons = const {},
+  List<String> currentConflictReasons = const [],
+  VoidCallback? onEditPreferences,
+}) async {
   var selected =
       recipes.where((recipe) => recipe.key == current?.recipeKey).firstOrNull;
   var portions = current?.servings ?? 1.0;
@@ -130,6 +136,23 @@ Future<({PlannedMeal? meal})?> chooseRecipe(BuildContext context,
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (currentConflictReasons.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Pinned meal conflict: ${currentConflictReasons.map(describeIneligibilityReason).join(' ')} Replace, unpin, or remove this meal, or update food preferences.',
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (recipes.isEmpty)
                       const Text(
                           'No resolved recipes meet your current exclusions.'),
@@ -188,6 +211,49 @@ Future<({PlannedMeal? meal})?> chooseRecipe(BuildContext context,
                         title: const Text('Pin this slot'),
                         onChanged: (value) =>
                             refresh(() => pinned = value ?? false)),
+                    if (ineligibleReasons.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      if (recipes.isEmpty)
+                        for (final entry in ineligibleReasons.entries)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              '${entry.key.name}: ${entry.value.map(describeIneligibilityReason).join(' ')}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          )
+                      else
+                        ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          title: Text(
+                              'Excluded recipes (${ineligibleReasons.length})'),
+                          children: [
+                            for (final entry in ineligibleReasons.entries)
+                              ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(entry.key.name),
+                                subtitle: Text(entry.value
+                                    .map(describeIneligibilityReason)
+                                    .join(' ')),
+                              ),
+                          ],
+                        ),
+                    ],
+                    if ((ineligibleReasons.isNotEmpty ||
+                            currentConflictReasons.isNotEmpty) &&
+                        onEditPreferences != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            onEditPreferences();
+                          },
+                          icon: const Icon(Icons.tune),
+                          label: const Text('Edit food preferences'),
+                        ),
+                      ),
                   ]),
               actions: [
                 TextButton(

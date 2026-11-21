@@ -9,6 +9,7 @@ library;
 export 'src/application/ids.dart';
 export 'src/application/log_food.dart';
 export 'src/application/ports.dart';
+export 'src/domain/allergens.dart';
 export 'src/domain/entry.dart';
 export 'src/domain/check_in.dart';
 export 'src/domain/food.dart';

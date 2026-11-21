@@ -6,7 +6,14 @@ import 'package:salu_data/salu_data.dart';
 import 'local_json_file.dart';
 
 export 'package:salu_core/salu_core.dart'
-    show FoodPreferences, PlanningProfile, WeightUnit;
+    show
+        AllergenId,
+        AllergenIdLabel,
+        FoodPreferences,
+        PlanningProfile,
+        WeightUnit,
+        resolveAllergen,
+        resolveStrictAllergens;
 
 extension WeightUnitLabel on WeightUnit {
   String get label => switch (this) {

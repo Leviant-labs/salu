@@ -7,20 +7,169 @@ import 'plan_suggestions.dart';
 import 'recipe_library.dart';
 import 'week_plan.dart';
 
+final class PinnedMealConflict {
+  const PinnedMealConflict({
+    required this.position,
+    required this.meal,
+    required this.reasons,
+  });
+
+  final MealPosition position;
+  final PlannedMeal meal;
+  final List<String> reasons;
+}
+
+final class PinnedMealConflictException implements Exception {
+  const PinnedMealConflictException(this.conflicts);
+
+  final List<PinnedMealConflict> conflicts;
+}
+
+String describeIneligibilityReason(String reason) {
+  if (reason == 'unknownAllergenStatus') {
+    return 'Allergen status is unknown (excluded when strict allergies are active).';
+  }
+  if (reason == 'cookingLimit') {
+    return 'Exceeds the cooking time limit.';
+  }
+  if (reason.startsWith('unresolvedStrictAllergen:')) {
+    final term = reason.substring('unresolvedStrictAllergen:'.length);
+    return 'Unrecognized strict allergy "$term" — select a canonical allergen category or move it to "Must exclude".';
+  }
+  if (reason.startsWith('containsAllergen:')) {
+    final id = reason.substring('containsAllergen:'.length);
+    final label = AllergenId.values
+            .where((value) => value.name == id)
+            .firstOrNull
+            ?.label ??
+        id;
+    return 'Contains declared allergen: $label.';
+  }
+  if (reason.startsWith('excludedIngredient:')) {
+    final term = reason.substring('excludedIngredient:'.length);
+    return 'Contains excluded ingredient: $term.';
+  }
+  return reason;
+}
+
+List<PinnedMealConflict> findPinnedConflicts(
+  WeekPlan plan,
+  Map<String, RecipeVersion> recipes,
+  PlanningProfile profile,
+) {
+  final exclusions = profile.preferences.exclusionItems;
+  final strictAllergens = profile.preferences.allergenItems;
+  final conflicts = <PinnedMealConflict>[];
+  for (final entry in plan.meals.entries) {
+    final meal = entry.value;
+    if (!meal.pinned) continue;
+    final recipe = meal.recipeKey == null ? null : recipes[meal.recipeKey];
+    if (recipe != null) {
+      final reasons = recipeIneligibilityReasons(
+        recipe,
+        exclusions: exclusions,
+        strictAllergens: strictAllergens,
+      );
+      if (reasons.isNotEmpty) {
+        conflicts.add(PinnedMealConflict(
+          position: entry.key,
+          meal: meal,
+          reasons: reasons,
+        ));
+      }
+      continue;
+    }
+    final reasons = <String>[];
+    if (strictAllergens.isNotEmpty) {
+      final parsed = resolveStrictAllergens(strictAllergens);
+      for (final term in parsed.unresolved) {
+        reasons.add('unresolvedStrictAllergen:$term');
+      }
+      reasons.add('unknownAllergenStatus');
+    }
+    for (final raw in exclusions) {
+      final term = raw.trim();
+      if (term.isNotEmpty &&
+          _textMentions('${meal.name} ${meal.details}', term)) {
+        final code = 'excludedIngredient:$term';
+        if (!reasons.contains(code)) reasons.add(code);
+      }
+    }
+    if (reasons.isNotEmpty) {
+      conflicts.add(PinnedMealConflict(
+        position: entry.key,
+        meal: meal,
+        reasons: List.unmodifiable(reasons),
+      ));
+    }
+  }
+  return List.unmodifiable(conflicts);
+}
+
+bool _textMentions(String text, String term) {
+  final key = normalizeAllergenText(term);
+  if (key.isEmpty) return false;
+  final haystack = ' ${normalizeAllergenText(text)} ';
+  final singular = key.endsWith('s') && key.length > 3
+      ? key.substring(0, key.length - 1)
+      : key;
+  return [key, singular, '${singular}s', '${singular}es']
+      .any((word) => haystack.contains(' $word '));
+}
+
 class RecipePlanning {
   const RecipePlanning(this.library, this.assistant);
   final RecipeLibrary library;
   final SaluAssistant assistant;
 
   List<RecipeVersion> eligible(
-          Iterable<RecipeVersion> recipes, PlanningProfile profile) =>
+          Iterable<RecipeVersion> recipes, PlanningProfile profile,
+          {int? cookingLimit}) =>
       [
         for (final recipe in recipes)
           if (recipeEligible(recipe,
               exclusions: profile.preferences.exclusionItems,
-              strictAllergens: profile.preferences.allergenItems))
+              strictAllergens: profile.preferences.allergenItems,
+              cookingLimit: cookingLimit))
             recipe,
       ];
+
+  Map<RecipeVersion, List<String>> ineligibilityReasons(
+      Iterable<RecipeVersion> recipes, PlanningProfile profile,
+      {int? cookingLimit}) {
+    final result = <RecipeVersion, List<String>>{};
+    for (final recipe in recipes) {
+      final reasons = recipeIneligibilityReasons(
+        recipe,
+        exclusions: profile.preferences.exclusionItems,
+        strictAllergens: profile.preferences.allergenItems,
+        cookingLimit: cookingLimit,
+      );
+      if (reasons.isNotEmpty) {
+        result[recipe] = reasons;
+      }
+    }
+    return Map.unmodifiable(result);
+  }
+
+  List<PinnedMealConflict> pinnedConflicts(
+    WeekPlan plan,
+    Iterable<RecipeVersion> recipes,
+    PlanningProfile profile,
+  ) =>
+      findPinnedConflicts(
+        plan,
+        {for (final recipe in recipes) recipe.key: recipe},
+        profile,
+      );
+
+  static int? parseCookingLimit(String request) {
+    final match = RegExp(
+            r'\b(?:under|within|at most|max(?:imum)?)\s+(\d{1,3})\s*(?:min|minutes)\b',
+            caseSensitive: false)
+        .firstMatch(request);
+    return match == null ? null : int.parse(match[1]!);
+  }
 
   Future<Map<MealPosition, PlannedMeal>> propose(
       WeekPlan plan,
@@ -28,20 +177,20 @@ class RecipePlanning {
       PlanningProfile profile,
       PlanSuggestionContext request,
       {required bool useAI}) async {
-    final match = RegExp(
-            r'\b(?:under|within|at most|max(?:imum)?)\s+(\d{1,3})\s*(?:min|minutes)\b',
-            caseSensitive: false)
-        .firstMatch(request.request);
-    final limit = match == null ? null : int.parse(match[1]!);
+    final byKey = {for (final recipe in recipes) recipe.key: recipe};
+    final conflicts = findPinnedConflicts(plan, byKey, profile);
+    if (conflicts.isNotEmpty) {
+      throw PinnedMealConflictException(conflicts);
+    }
+    final limit = parseCookingLimit(request.request);
     final latest = <String, RecipeVersion>{};
     for (final recipe in recipes) {
       if ((latest[recipe.id]?.version ?? 0) < recipe.version) {
         latest[recipe.id] = recipe;
       }
     }
-    final eligibleRecipes = eligible(latest.values, profile)
-        .where((recipe) => limit == null || recipe.prepMinutes <= limit)
-        .toList();
+    final eligibleRecipes =
+        eligible(latest.values, profile, cookingLimit: limit);
     if (eligibleRecipes.isEmpty) return {};
     final slots = <MealPosition>[
       for (var day = 0; day < 7; day++)
@@ -98,7 +247,7 @@ Use valid portion bounds. When available, prefer the app's suggested portion for
       if (rows is! List || rows.length > slots.length) {
         throw const FormatException('Invalid plan');
       }
-      final byKey = {
+      final candidateByKey = {
         for (final recipe in eligibleRecipes.take(36)) recipe.key: recipe
       };
       final result = <MealPosition, PlannedMeal>{};
@@ -108,7 +257,7 @@ Use valid portion bounds. When available, prefer the app's suggested portion for
         final slot = MealSlot.values
             .where((slot) => slot.name == row['slot'])
             .firstOrNull;
-        final recipe = byKey[row['recipeKey']];
+        final recipe = candidateByKey[row['recipeKey']];
         final amount = row['servings'];
         if (day is! int ||
             slot == null ||
@@ -128,7 +277,6 @@ Use valid portion bounds. When available, prefer the app's suggested portion for
 
     final result = <MealPosition, PlannedMeal>{};
     final uses = <String, int>{};
-    final byKey = {for (final recipe in recipes) recipe.key: recipe};
     for (final meal in plan.meals.values) {
       if (meal.recipeKey case final key?) {
         uses.update(key, (count) => count + 1, ifAbsent: () => 1);
@@ -145,6 +293,9 @@ Use valid portion bounds. When available, prefer the app's suggested portion for
           recipes: eligibleRecipes,
           uses: uses,
           dislikes: profile.preferences.dislikeItems,
+          exclusions: profile.preferences.exclusionItems,
+          strictAllergens: profile.preferences.allergenItems,
+          cookingLimit: limit,
           remaining: {
             for (final target in profile.targets.entries)
               if (current[target.key]?.complete == true ||

@@ -33,6 +33,8 @@ class RecipeLibrary {
               name: recipe.name,
               prepMinutes: recipe.minutes,
               method: recipe.method,
+              allergens: recipe.allergens,
+              allergenSource: recipe.allergenSource,
               ingredients: [
                 for (final (id, grams, name) in recipe.ingredients)
                   RecipeIngredient(
@@ -69,6 +71,9 @@ class RecipeLibrary {
         'servings': recipe.servings,
         'finishedGrams': recipe.finishedGrams,
         'method': recipe.method,
+        if (recipe.allergens != null) 'allergens': recipe.allergens!.toList(),
+        if (recipe.allergenSource != null)
+          'allergenSource': recipe.allergenSource,
         'ingredients': [
           for (final i in recipe.ingredients)
             {
@@ -94,6 +99,8 @@ class RecipeLibrary {
         servings: (row['servings'] as num).toDouble(),
         finishedGrams: (row['finishedGrams'] as num?)?.toDouble(),
         method: row['method'] as String,
+        allergens: (row['allergens'] as List?)?.cast<String>().toSet(),
+        allergenSource: row['allergenSource'] as String?,
         ingredients: [
           for (final raw in row['ingredients'] as List)
             _ingredient(raw as Map<String, dynamic>)
@@ -119,11 +126,16 @@ class RecipeLibrary {
       );
 }
 
+const _starterAllergenProvenance =
+    'Salu starter ingredient review (2026-11-21) against USDA FDC SR Legacy 2018-04 listed ingredients; listed ingredients only, not a cross-contamination guarantee.';
+
 typedef _Starter = ({
   String id,
   String name,
   int minutes,
   String method,
+  Set<String>? allergens,
+  String? allergenSource,
   List<(int, double, String)> ingredients
 });
 const _recipes = <_Starter>[
@@ -133,6 +145,8 @@ const _recipes = <_Starter>[
     minutes: 10,
     method:
         'Toss chopped tomato and onion with drained chickpeas and olive oil.',
+    allergens: <String>{},
+    allergenSource: _starterAllergenProvenance,
     ingredients: [
       (173757, 180, 'Cooked chickpeas, drained'),
       (170457, 120, 'Tomatoes'),
@@ -146,6 +160,8 @@ const _recipes = <_Starter>[
     minutes: 10,
     method:
         'Toast the bread, then top with drained sardines and sliced tomato.',
+    allergens: null,
+    allergenSource: null,
     ingredients: [
       (175139, 90, 'Oil-packed sardines, drained'),
       (172688, 90, 'Whole-wheat bread'),
@@ -157,6 +173,8 @@ const _recipes = <_Starter>[
     name: 'Yogurt, banana and oats',
     minutes: 5,
     method: 'Stir oats into the yogurt and top with sliced banana.',
+    allergens: <String>{'milk', 'wheatGluten'},
+    allergenSource: _starterAllergenProvenance,
     ingredients: [
       (171304, 200, 'Plain Greek yogurt'),
       (169705, 55, 'Dry oats'),
@@ -169,6 +187,8 @@ const _recipes = <_Starter>[
     minutes: 15,
     method:
         'Warm cooked rice and lentils; serve with sliced tomato and olive oil.',
+    allergens: <String>{},
+    allergenSource: _starterAllergenProvenance,
     ingredients: [
       (172421, 160, 'Cooked lentils, drained'),
       (169757, 165, 'Cooked white rice'),
@@ -181,6 +201,8 @@ const _recipes = <_Starter>[
     name: 'Tofu quinoa bowl',
     minutes: 20,
     method: 'Pan-sear diced tofu and carrot; serve over warm cooked quinoa.',
+    allergens: <String>{'soy'},
+    allergenSource: _starterAllergenProvenance,
     ingredients: [
       (172475, 150, 'Firm tofu'),
       (168917, 160, 'Cooked quinoa'),
@@ -194,6 +216,8 @@ const _recipes = <_Starter>[
     minutes: 15,
     method:
         'Toss warm cooked pasta with drained tuna, sliced tomato and olive oil.',
+    allergens: null,
+    allergenSource: null,
     ingredients: [
       (168928, 185, 'Cooked pasta'),
       (173709, 110, 'Tuna in water, drained'),
@@ -207,6 +231,8 @@ const _recipes = <_Starter>[
     minutes: 15,
     method:
         'Warm cooked chicken and couscous, then serve with chopped tomato and olive oil.',
+    allergens: <String>{'wheatGluten'},
+    allergenSource: _starterAllergenProvenance,
     ingredients: [
       (171477, 130, 'Roasted chicken breast'),
       (169700, 180, 'Cooked couscous'),
@@ -220,6 +246,8 @@ const _recipes = <_Starter>[
     minutes: 10,
     method:
         'Mash drained cooked beans with olive oil; spread on toast with crumbled feta.',
+    allergens: null,
+    allergenSource: null,
     ingredients: [
       (170378, 145, 'Cooked broad beans, drained'),
       (173420, 50, 'Feta'),
