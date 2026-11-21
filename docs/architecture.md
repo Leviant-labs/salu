@@ -11,11 +11,15 @@ Today renders photo cards by meal slot and combines original diary rows with
 meal snapshots for totals. The meal is saved before AI runs; Drift's diary watch
 updates the card after a successful revision-checked enrichment. The editor
 supports reviewed label evidence per item and correction previews for saved meals.
-Photos are app-support files; meal records store their paths. The food library
-offers catalogue search, saved foods and meals, and versioned recipes. The Plan
-workspace uses resolved recipes and bounded portions and derives the shopping
-list from the confirmed plan. The local check-in reads diary, weight, and activity
-observations and compares them to user-declared intentions.
+Photos are app-support files; meal records store their paths. First-run setup
+runs a seven-page resumable wizard backed by a revisioned SQLite draft that
+commits atomically to the planning profile on finish (or marks setup skipped),
+while Settings keeps a compact optional-field profile editor and Plan edits food
+preferences directly. The food library offers catalogue search, saved foods and
+meals, and versioned recipes. The Plan workspace uses resolved recipes and
+bounded portions and derives the shopping list from the confirmed plan. The
+local check-in reads diary, weight, and activity observations and compares them
+to user-declared intentions.
 
 ## Modules
 
@@ -161,10 +165,18 @@ Photo + text + label images
   commit. A dislike affects ranking unless the user makes it an exclusion.
   Grocery aggregation uses the validated plan; local search and manual editing
   support the same workspace without a provider. Plan is never intake.
-- Onboarding writes editable starting weight, goals/targets, preferences, and any
-  optional dietary or activity intentions through ordinary app commands. Policy
-  gates automatic target proposals and the user confirms them; optional intentions
-  do not trigger target changes or bypass review.
+- First-run onboarding (`OnboardingWizard`, `OnboardingController`, and
+  `OnboardingStore`) walks across seven pages: Welcome, goals/activity,
+  starting weight, food preferences, declared daily targets, optional AI setup,
+  and Review. Draft progress persists in `local_documents` (`onboarding-draft`)
+  on each step so restarts resume where the user left off. Users can skip setup
+  from Welcome or skip individual pages; all inputs remain optional with no
+  automatic target calculations, the AI setup step makes no network calls and
+  authorizes no meal/photo uploads, and finishing commits `planning-profile`
+  and clears the draft atomically. Settings retains the compact `_ProfileEditor`
+  with all fields optional, and Plan uses `FoodPreferencesScreen`. Policy gates
+  automatic target proposals and the user confirms them; optional intentions do
+  not trigger target changes or bypass review.
 - Versioned regional imports stage and atomically activate international food
   datasets while preserving source provenance and user records. Search installed
   data across regions offline. No-match flows can accept a supported generic

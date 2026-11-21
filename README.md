@@ -70,11 +70,17 @@ To generate native platform folders (`android/`, `ios/`, not committed) before r
    for offline search and barcode lookup. Catalogue source: USDA Agricultural
    Research Service, [FoodData Central SR Legacy](https://fdc.nal.usda.gov/)
    (April 2018, CC0 1.0).
-4. In first-run setup or **Settings → Planning profile**, enter any declared
-   targets, activity and food preferences you want Salu to use. In **Plan**,
-   choose recipes, fill slots offline, or ask the assistant for a swap. The
-   review shows nutrition against your targets and changes to grocery requirements
-   before saving. **Log separately** records what you actually ate.
+4. On first run, a seven-page resumable setup wizard walks through Welcome,
+   goals and routine, starting weight, food preferences, declared daily
+   targets, optional AI setup, and Review. Every input is optional and no
+   automatic targets are calculated. Progress saves locally on each step so you
+   can resume after reopening, skip individual steps, or choose **Skip setup**
+   from Welcome; optional AI setup does not authorize meal or photo uploads.
+   Afterward, **Settings → Planning profile** opens the compact profile editor
+   (with all fields optional) and **Plan** also lets you edit food preferences.
+   In **Plan**, choose recipes, fill slots offline, or ask the assistant for a
+   swap. The review shows nutrition against your targets and changes to grocery
+   requirements before saving. **Log separately** records what you actually ate.
 5. In **Today → Weekly check-in**, record weight and activity and mark which days
    are complete. Salu shows what the records support and can offer optional
    food or activity ideas based on your declared intentions. It never changes

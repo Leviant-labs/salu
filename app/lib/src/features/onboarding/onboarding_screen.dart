@@ -36,7 +36,6 @@ class OnboardingScreen extends StatelessWidget {
       store: store ?? PlanningProfileStore.local,
       preferencesOnly: false,
       onSaved: onSaved,
-      firstRun: firstRun,
     );
   }
 }
@@ -59,13 +58,11 @@ class _ProfileEditor extends StatefulWidget {
     required this.store,
     required this.preferencesOnly,
     this.onSaved,
-    this.firstRun = false,
   });
 
   final PlanningProfileStore store;
   final bool preferencesOnly;
   final VoidCallback? onSaved;
-  final bool firstRun;
 
   @override
   State<_ProfileEditor> createState() => _ProfileEditorState();
@@ -130,7 +127,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   double? _number(String text) =>
       double.tryParse(text.trim().replaceAll(',', '.'));
 
-  String? _validateNumber(String? text, {required bool required}) {
+  String? _validateNumber(String? text, {bool required = false}) {
     final value = text?.trim() ?? '';
     if (value.isEmpty) return required ? 'Enter a starting weight.' : null;
     final number = _number(value);
@@ -191,20 +188,6 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     }
   }
 
-  Future<void> _skip() async {
-    setState(() => _saving = true);
-    try {
-      await widget.store.skipOnboarding();
-      if (mounted) widget.onSaved?.call();
-    } catch (_) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not save setup.')));
-      }
-    }
-  }
-
   @override
   void dispose() {
     for (final controller in [
@@ -258,14 +241,6 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (!widget.preferencesOnly) ...[
-              if (widget.firstRun) ...[
-                Text('Welcome to Salu',
-                    style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 8),
-                const Text(
-                    'Let’s make your diary and meal plans your own. Everything here is optional and can be changed later.'),
-                const SizedBox(height: 24),
-              ],
               const Text(
                 'Record your starting point and any goals you’ve chosen. No targets are calculated for you.',
               ),
@@ -284,7 +259,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                         labelText: 'Starting weight',
                       ),
                       validator: (text) =>
-                          _validateNumber(text, required: !widget.firstRun),
+                          _validateNumber(text, required: false),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -385,15 +360,9 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                     ? 'Saving…'
                     : widget.preferencesOnly
                         ? 'Save preferences'
-                        : widget.firstRun
-                            ? 'Get started'
-                            : 'Save profile',
+                        : 'Save profile',
               ),
             ),
-            if (widget.firstRun)
-              TextButton(
-                  onPressed: _saving ? null : _skip,
-                  child: const Text('Skip for now')),
             if (_saved)
               const Text('Saved on this device.', textAlign: TextAlign.center),
           ],
@@ -406,11 +375,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: Text(
-            widget.preferencesOnly
-                ? 'Food preferences'
-                : widget.firstRun
-                    ? 'Your setup'
-                    : 'Planning profile',
+            widget.preferencesOnly ? 'Food preferences' : 'Planning profile',
           ),
         ),
         body: _loading
