@@ -663,4 +663,63 @@ void main() {
     expect(saved.allergens, isEmpty);
     expect(saved.allergenSource, 'Checked package labels');
   });
+
+  testWidgets(
+      'PlanScreen reports unchanged plan snackbar instead of no-eligible-recipes when eligible recipes exist but no editable slots remain',
+      (tester) async {
+    final rice = recipe(
+      'Rice bowl',
+      'rice',
+      'Rice',
+      200,
+      allergens: const {},
+      allergenSource: 'fixture',
+    );
+    final unknownDish = recipe('Mystery soup', 'mystery', 'Stock', 200);
+    final stored = _MemoryWeek(
+      WeekPlan(
+        monday,
+        meals: {
+          for (var day = 0; day < 7; day++)
+            for (final slot in MealSlot.values)
+              (day: day, slot: slot): plannedRecipe(rice, 1),
+        },
+      ),
+    );
+    final profileStore = _Profile(
+      const PlanningProfile(
+        preferences: FoodPreferences(strictAllergens: 'milk'),
+      ),
+    );
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PlanScreen(
+          now: () => monday,
+          store: stored,
+          profileStore: profileStore,
+          recipePlanning: RecipePlanning(
+            _RecipeLibrary(LocalDocumentStore(db), [rice, unknownDish]),
+            FakeOpenAi(reply: const {}).assistant,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Fill empty slots offline'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Request suggestions'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No eligible recipes found'), findsNothing);
+    expect(
+      find.text(
+        'No eligible recipe changes were found for these slots. Your plan is unchanged.',
+      ),
+      findsOneWidget,
+    );
+  });
 }

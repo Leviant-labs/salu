@@ -380,15 +380,18 @@ class _PlanScreenState extends State<PlanScreen> {
             }
           }
           final limit = RecipePlanning.parseCookingLimit(request.request);
-          final excluded = planner.ineligibilityReasons(
-            latest.values,
-            profile,
-            cookingLimit: limit,
-          );
+          final hasEligible = planner
+              .eligible(latest.values, profile, cookingLimit: limit)
+              .isNotEmpty;
           final unresolved =
               resolveStrictAllergens(profile.preferences.allergenItems)
                   .unresolved;
-          if (excluded.isNotEmpty || unresolved.isNotEmpty) {
+          if (!hasEligible || unresolved.isNotEmpty) {
+            final excluded = planner.ineligibilityReasons(
+              latest.values,
+              profile,
+              cookingLimit: limit,
+            );
             emptyReport = (excluded: excluded, unresolved: unresolved);
           } else {
             _notify(
