@@ -13,5 +13,6 @@ export 'src/dev_seed.dart';
 export 'src/repositories/drift_entry_repository.dart';
 export 'src/repositories/drift_food_repository.dart';
 export 'src/repositories/drift_photo_meal_repository.dart';
+export 'src/repositories/endpoint_profiles_store.dart';
 export 'src/repositories/local_document_store.dart';
 export 'src/repositories/onboarding_store.dart';

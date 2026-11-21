@@ -20,4 +20,5 @@ export 'src/domain/recipes.dart';
 export 'src/domain/quantity.dart';
 export 'src/domain/time.dart';
 export 'src/platform/health.dart';
+export 'src/providers/endpoint_profile.dart';
 export 'src/providers/inference.dart';
