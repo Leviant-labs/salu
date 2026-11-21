@@ -55,6 +55,7 @@ The numbering is a recommended delivery sequence, not an instruction to postpone
 | Daily usability/localization/accessibility | Plan 6 task 3 |
 | User: restore onboarding pages | Plan 2 tasks 1–3 |
 | User: compatible endpoints, credentials, discovery | Plan 3 tasks 1–4 |
+| User: dark luxury green-accented glassmorphic/neumorphic UI | Plan 6 task 3 |
 
 ## Execution discipline
 

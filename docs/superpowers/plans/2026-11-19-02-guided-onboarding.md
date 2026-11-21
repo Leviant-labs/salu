@@ -67,7 +67,7 @@ void main() {
 ```
 
 From data run `dart test test/onboarding_store_test.dart`; expect missing draft/store symbols. Add stale-draft rejection, future-version rejection, transaction rollback, skip-preserves-existing-profile and already-onboarded fixtures in this file.
-- [ ] **Step 2: Implement exact storage semantics.** Move only profile value types to core, leaving UI labels in app and the legacy file importer intact. Core `WeightUnit` keeps the cases `kilograms`/`pounds` but no display constructor; app adds `extension WeightUnitLabel on WeightUnit` returning `kg`/`lb` so current `.label` consumers still compile. Draft JSON is `{'version':1,'step':step.name,'profile':profile.toJson()}`; row revision is external to payload. `save` uses compare-and-put; `complete` transaction checks expected draft revision, writes validated `planning-profile` with `onboarded:true`, removes draft; a conflict returns false and makes no changes. `skip` transaction marks an existing committed profile onboarded while preserving fields and removes the draft. Validate optional positive finite numbers at this boundary; absent is allowed. No raw numeric editing text, key or token field exists in the draft. Add explicit exports so existing imports compile without renaming application types.
+- [ ] **Step 2: Implement exact storage semantics.** Move only profile value types to core, leaving UI labels in app and the legacy file importer intact. Core `WeightUnit` keeps the cases `kilograms`/`pounds` but no display constructor; app adds `extension WeightUnitLabel on WeightUnit` returning `kg`/`lb` so current `.label` consumers still compile. Draft JSON is `{'version':1,'step':step.name,'profile':profile.toJson()}`; row revision is external to payload. `save` uses compare-and-put; `complete` transaction checks the expected draft revision, reads the current `planning-profile` revision (handling both absent revision 0 and an existing committed profile), writes validated `planning-profile` with `onboarded:true`, and removes the draft; a conflict returns false and makes no changes. `skip` transaction marks an existing committed profile onboarded while preserving fields and removes the draft. Validate optional positive finite numbers at this boundary; absent is allowed. No raw numeric editing text, key or token field exists in the draft. Add explicit exports so existing imports compile without renaming application types.
 - [ ] **Step 3: Run green and existing profile/migration tests.** Run the new data test; from app run `flutter test --no-pub test/onboarding/planning_profile_test.dart`. Confirm no SQLite schema bump is needed and no draft triggers network access.
 - [ ] **Step 4: Commit.**
 
@@ -78,7 +78,7 @@ git commit -m "feat: persist onboarding progress and finish setup atomically"
 
 ### Task 2: Page-by-page wizard and optional AI seam
 
-**Files:** Create `app/lib/src/features/onboarding/onboarding_controller.dart`, `onboarding_wizard.dart`, `onboarding_pages.dart`, `app/test/onboarding/onboarding_wizard_test.dart`; modify `app/lib/src/features/onboarding/onboarding_screen.dart:5–23`, `app/lib/src/providers.dart`, `app/lib/src/router.dart:130–180`.
+**Files:** Create `app/lib/src/features/onboarding/onboarding_controller.dart`, `onboarding_wizard.dart`, `onboarding_pages.dart`, `app/test/onboarding/onboarding_wizard_test.dart`; modify `app/lib/src/features/onboarding/onboarding_screen.dart:5–23`, `app/lib/src/providers.dart`, `app/lib/src/router.dart:130–180`, `app/integration_test/offline_diary_test.dart`.
 
 **Interfaces:** Consumes Task 1 `OnboardingStore`. Produces `OnboardingWizard({required OnboardingStore store, required VoidCallback onCompleted, Future<void> Function(BuildContext)? openConnections})`. `OnboardingController` is a `ChangeNotifier` with `OnboardingDraft draft`, `bool busy`, `String? error`, `Future<void> load()`, `Future<bool> next(PlanningProfile profile)`, `Future<bool> back()`, `Future<bool> skipStep()`, `Future<bool> finish()`, `Future<bool> skipSetup()`. Successful transitions reload the stored revision. Expose `onboardingStoreProvider` using `documentStoreProvider`; no global controller instance.
 
@@ -100,7 +100,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Step 1 of 7'), findsOneWidget);
     expect(find.text('Starting weight'), findsNothing);
-    await tester.tap(find.text('Continue'));
+    await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
     expect(find.text('Step 2 of 7'), findsOneWidget);
     await tester.tap(find.text('Back'));
@@ -138,12 +138,12 @@ Future<bool> next(PlanningProfile profile) async {
 }
 ```
 
-The controller owns `final OnboardingStore store`; implement Back, skip and finish using the same serialized pattern and exact Task 1 semantics, not duplicated DB writes. Page fields retain raw editing text in widget/controller memory only; validate before next, and save only normalized values. Render one page at a time, persistent footer in `SafeArea`, step semantics live region and optional-field copy. Use `PopScope` to route Android back to the preceding step; provide explicit Skip setup on Welcome. AI page says setup is optional, invokes `openConnections` if supplied, and always offers Skip. The router checks the existing profile first and mounts the wizard only for unonboarded users. Do not show it again after updating the app.
-- [ ] **Step 3: Verify green and startup behavior.** Run wizard tests and `test/onboarding/startup_test.dart`; update its fake wiring to override the draft store with an in-memory DB. Ensure skip-once/later-launch assertions remain. Add integration steps for kill/relaunch on page four to the device checklist; use actual process restart for release evidence.
+The controller owns `final OnboardingStore store`; implement Back, skip and finish using the same serialized pattern and exact Task 1 semantics, not duplicated DB writes. Page fields retain raw editing text in widget/controller memory only; validate before next, and save only normalized values. Render one page at a time, persistent footer in `SafeArea` with `Next`, `Back`, and `Skip this step` controls, step semantics live region and optional-field copy. Use `PopScope` to route Android back to the preceding step; provide explicit `Skip setup` on Welcome. AI page says setup is optional, invokes `openConnections` if supplied, and always offers Skip. The router loads `PlanningProfileStore.load()` first (so any legacy `planning_profile_v1.json` migrates to SQLite before checking `onboarded`) and mounts the wizard only for unonboarded users. Do not show it again after updating the app.
+- [ ] **Step 3: Verify green and startup behavior.** Run wizard tests and `test/onboarding/startup_test.dart`; update its fake wiring to override the draft store with an in-memory DB, and update `app/integration_test/offline_diary_test.dart` from `Skip for now` to `Skip setup`. Ensure skip-once/later-launch assertions remain. Add integration steps for kill/relaunch on page four to the device checklist; use actual process restart for release evidence.
 - [ ] **Step 4: Commit.**
 
 ```bash
-git add app/lib/src/features/onboarding/onboarding_controller.dart app/lib/src/features/onboarding/onboarding_wizard.dart app/lib/src/features/onboarding/onboarding_pages.dart app/lib/src/features/onboarding/onboarding_screen.dart app/lib/src/providers.dart app/lib/src/router.dart app/test/onboarding/onboarding_wizard_test.dart app/test/onboarding/startup_test.dart docs/platform-release-checklist.md
+git add app/lib/src/features/onboarding/onboarding_controller.dart app/lib/src/features/onboarding/onboarding_wizard.dart app/lib/src/features/onboarding/onboarding_pages.dart app/lib/src/features/onboarding/onboarding_screen.dart app/lib/src/providers.dart app/lib/src/router.dart app/test/onboarding/onboarding_wizard_test.dart app/test/onboarding/startup_test.dart app/integration_test/offline_diary_test.dart docs/platform-release-checklist.md
 git commit -m "feat: restore guided resumable onboarding pages"
 ```
 
