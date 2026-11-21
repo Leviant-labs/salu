@@ -85,6 +85,39 @@ function Invoke-BoundaryCheckFallback {
       Write-Host "ok: $($rule.Label)"
     }
   }
+
+  $dataTargets = @()
+  if (Test-Path -LiteralPath 'packages/salu_data/lib' -PathType Container) {
+    $dataTargets += Get-ChildItem -Path 'packages/salu_data/lib' -File -Recurse
+  }
+  if (Test-Path -LiteralPath 'packages/salu_data/pubspec.yaml' -PathType Leaf) {
+    $dataTargets += Get-Item -LiteralPath 'packages/salu_data/pubspec.yaml'
+  }
+  $dataHits = $dataTargets | Select-String -Pattern 'package:(flutter|salu/)'
+  if ($dataHits) {
+    Write-Host 'FAIL: salu_data must not import Flutter or the app'
+    foreach ($hit in $dataHits) {
+      Write-Host "$($hit.Path):$($hit.LineNumber):$($hit.Line)"
+    }
+    $failed = $true
+  } else {
+    Write-Host 'ok: salu_data must not import Flutter or the app'
+  }
+
+  $widgetTargets = @(
+    'app/lib/src/features/meals/meal_editor.dart',
+    'app/lib/src/features/plan/plan_screen.dart'
+  ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { Get-Item -LiteralPath $_ }
+  $widgetHits = $widgetTargets | Select-String -Pattern '(package:salu_data|dart:io)'
+  if ($widgetHits) {
+    Write-Host 'FAIL: extracted presentation widgets must not import salu_data or dart:io'
+    foreach ($hit in $widgetHits) {
+      Write-Host "$($hit.Path):$($hit.LineNumber):$($hit.Line)"
+    }
+    $failed = $true
+  } else {
+    Write-Host 'ok: extracted presentation widgets must not import salu_data or dart:io'
+  }
   if ($failed) {
     throw 'Boundary check failed'
   }

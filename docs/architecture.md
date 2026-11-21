@@ -25,9 +25,9 @@ to user-declared intentions.
 
 | Module | Depends on | Owns |
 | --- | --- | --- |
-| `salu_core` | Dart SDK only | Domain types, nutrition arithmetic, diary time semantics, typed commands, ports for storage / health / inference |
-| `salu_data` | `salu_core`, drift, sqlite3 | Schema, migrations, diary repositories and bundled catalogue |
-| `app` | both, Flutter, Riverpod, go_router | UI, composition root, media and secure-storage adapters, ChatGPT OAuth and BYOK protocol adapters (`InferenceGateway`), feature repository wiring |
+| `salu_core` | Dart SDK only | Domain types, nutrition arithmetic, diary time semantics, meal revision (`reviseMealItem`), planning value types and math (`PlanService`), typed commands, ports for storage / health / inference |
+| `salu_data` | `salu_core`, drift, sqlite3 | Schema, migrations, diary repositories, library & week-plan repositories (`FoodLibraryRepository`, `RecipeLibraryRepository`, `WeekPlanRepository`), and bundled catalogue |
+| `app` | both, Flutter, Riverpod, go_router | UI, feature controllers (`MealEditorController`, `PlanController`, `LibraryController`), composition root, media and secure-storage adapters, ChatGPT OAuth and BYOK protocol adapters (`InferenceGateway`), feature repository wiring |
 
 The boundary is enforced mechanically, not by convention: `salu_core`'s pubspec
 has no Flutter, drift, or HTTP dependency, and `tool/check_boundaries.sh` greps

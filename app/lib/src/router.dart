@@ -115,8 +115,7 @@ final appRouter = GoRouter(
                                   newId: ref.read(idGeneratorProvider).next,
                                   initialDescription: recipe.name,
                                   initialItems: recipe.snapshot(servings),
-                                  initialSlot:
-                                      core.MealSlot.values.byName(slot.name),
+                                  initialSlot: core.toIntakeMealSlot(slot),
                                 )));
                   },
                 );

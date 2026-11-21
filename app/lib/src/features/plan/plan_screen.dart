@@ -4,6 +4,7 @@ import 'package:salu_core/salu_core.dart' hide MealSlot;
 import '../../assistant/assistant.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../onboarding/planning_profile.dart';
+import 'plan_controller.dart';
 import 'plan_draft_preview.dart';
 import 'plan_item_editor.dart';
 import 'plan_suggestions.dart';
@@ -63,16 +64,28 @@ class _PlanScreenState extends State<PlanScreen> {
   DateTime get _now => (widget.now ?? DateTime.now)();
 
   final _scroll = ScrollController();
-  late DateTime _week = startOfPlanWeek(_now);
-  WeekPlan? _plan;
+  late final PlanController _controller = PlanController(
+    store: _store,
+    profileStore: _profiles,
+    recipePlanning: widget.recipePlanning,
+    suggestions: _suggestions,
+    initialWeek: startOfPlanWeek(_now),
+  )..addListener(_onControllerChanged);
+
+  DateTime get _week => _controller.week;
+  WeekPlan? get _plan => _controller.plan;
   _Workspace _workspace = _Workspace.meals;
-  bool _loadFailed = false;
-  bool _saving = false;
-  bool _drafting = false;
-  bool _reviewing = false;
-  PlanningProfile? _profile;
-  Map<String, RecipeVersion> _recipes = const {};
-  bool get _busy => _plan == null || _saving || _drafting || _reviewing;
+  bool get _loadFailed => _controller.loadFailed;
+  bool get _saving => _controller.saving;
+  bool get _drafting => _controller.drafting;
+  bool get _reviewing => _controller.reviewing;
+  PlanningProfile? get _profile => _controller.profile;
+  Map<String, RecipeVersion> get _recipes => _controller.recipes;
+  bool get _busy => _controller.busy;
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -81,61 +94,27 @@ class _PlanScreenState extends State<PlanScreen> {
     _loadProfile();
   }
 
-  Future<void> _loadProfile() async {
-    try {
-      final profile = await _profiles.load();
-      if (mounted) setState(() => _profile = profile);
-    } catch (_) {
-      // A missing profile does not prevent editing this week.
-    }
-  }
+  Future<void> _loadProfile() => _controller.loadProfile();
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    _controller.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _load(DateTime week) async {
-    try {
-      final plan = await _store.load(week);
-      final recipes = await widget.recipePlanning?.library.load();
-      if (!mounted || _week != week) return;
-      setState(() {
-        _plan = plan;
-        if (recipes != null) {
-          _recipes = {for (final recipe in recipes) recipe.key: recipe};
-        }
-      });
-    } catch (_) {
-      if (!mounted || _week != week) return;
-      setState(() => _loadFailed = true);
-    }
-  }
+  Future<void> _load(DateTime week) => _controller.loadWeek(week);
 
   void _goToWeek(DateTime week) {
     if (_scroll.hasClients) _scroll.jumpTo(0);
-    setState(() {
-      _week = week;
-      _plan = null;
-      _loadFailed = false;
-    });
     _load(week);
   }
 
   Future<void> _save(WeekPlan next) async {
-    setState(() => _saving = true);
-    try {
-      await _store.save(next);
-      if (mounted) {
-        setState(() => _plan = next.copyWith(revision: next.revision + 1));
-      }
-    } catch (_) {
-      if (mounted) {
-        _notify('Could not save this change. Your previous plan is unchanged.');
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    final saved = await _controller.savePlan(next);
+    if (!saved && mounted) {
+      _notify('Could not save this change. Your previous plan is unchanged.');
     }
   }
 
@@ -152,7 +131,7 @@ class _PlanScreenState extends State<PlanScreen> {
       final recipes = await planner.library.load();
       if (!mounted || !identical(plan, _plan)) return;
       final byKey = {for (final recipe in recipes) recipe.key: recipe};
-      setState(() => _recipes = byKey);
+      _controller.updateRecipes(recipes);
       final latest = <String, RecipeVersion>{};
       for (final recipe in recipes) {
         if ((latest[recipe.id]?.version ?? 0) < recipe.version) {
@@ -353,7 +332,7 @@ class _PlanScreenState extends State<PlanScreen> {
               )),
     );
     if (!mounted || request == null || _busy) return;
-    setState(() => _drafting = true);
+    _controller.setDrafting(true);
     List<PinnedMealConflict>? pinnedConflictsToReport;
     ({
       Map<RecipeVersion, List<String>> excluded,
@@ -367,8 +346,7 @@ class _PlanScreenState extends State<PlanScreen> {
         final profile = await _profiles.load();
         final recipes = await planner.library.load();
         if (!mounted || !identical(plan, _plan)) return;
-        setState(() =>
-            _recipes = {for (final recipe in recipes) recipe.key: recipe});
+        _controller.updateRecipes(recipes);
         final proposal = await planner.propose(plan, recipes, profile, request,
             useAI: useAI);
         if (!mounted || !identical(plan, _plan)) return;
@@ -443,7 +421,7 @@ class _PlanScreenState extends State<PlanScreen> {
         _notify('Could not get usable suggestions. Nothing was added.');
       }
     } finally {
-      if (mounted) setState(() => _drafting = false);
+      if (mounted) _controller.setDrafting(false);
     }
     if (!mounted) return;
     if (pinnedConflictsToReport != null) {
@@ -550,11 +528,11 @@ class _PlanScreenState extends State<PlanScreen> {
       Set<MealPosition> changes,
       PlanningProfile profile) async {
     final next = reconcileGroceries(before.copyWith(meals: meals), _recipes);
-    setState(() => _reviewing = true);
+    _controller.setReviewing(true);
     final accepted = await reviewRecipePlan(
         context, before, next, _recipes, profile, changes);
     if (!mounted) return;
-    setState(() => _reviewing = false);
+    _controller.setReviewing(false);
     if (!accepted || !identical(before, _plan)) {
       return;
     }
@@ -601,8 +579,10 @@ class _PlanScreenState extends State<PlanScreen> {
         return 'A selected item mentions a food marked “Must exclude”. Edit or deselect it.';
       }
       final updated = selected.applyTo(plan);
-      await _store.save(updated);
-      if (mounted) setState(() => _plan = updated);
+      final saved = await _controller.savePlan(updated);
+      if (!saved) {
+        return 'Could not save the selected items. Your draft is still here.';
+      }
       return null;
     } catch (_) {
       return 'Could not save the selected items. Your draft is still here.';

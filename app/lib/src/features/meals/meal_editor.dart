@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:salu_core/salu_core.dart';
-import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
 import '../../assistant/operation_fence.dart';
@@ -12,9 +11,9 @@ import '../../data_transfer/data_write_gate.dart';
 import '../../media/managed_media_store.dart';
 import '../search/food_library.dart';
 import 'meal_editor_ai.dart';
+import 'meal_editor_controller.dart';
 import 'meal_editor_data.dart';
 import 'meal_editor_dialogs.dart';
-import 'meal_editor_images.dart';
 import 'meal_estimation.dart';
 
 /// Route for logging a new meal or revising one already in the diary.
@@ -99,6 +98,17 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
         directory: getApplicationSupportDirectory,
         newId: widget.editor.newId,
       );
+  late final MealEditorController _controller = MealEditorController(
+    repository: widget.editor.repository,
+    mutations: widget.editor.mutations,
+    assistant: widget.editor.assistant,
+    media: _media,
+    gate: widget.editor.gate,
+    fence: widget.editor.fence,
+    ids: _CallbackIdGenerator(widget.editor.newId),
+    estimateStatusStore: widget.editor.estimateStatusStore,
+    activeEstimates: widget.editor.activeEstimates,
+  );
   final _picker = ImagePicker();
   final _draftImages = <String>{};
   // If a write throws, its outcome could be unknown. Keep any affected file
@@ -196,6 +206,7 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     for (final path in _draftImages.difference(_protectedImages)) {
       unawaited(_media.removeUnreferenced(path, _protectedImages));
     }
+    _controller.dispose();
     _caption.dispose();
     _correction.dispose();
     super.dispose();
@@ -442,12 +453,8 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     }
   }
 
-  Future<Map<String, dynamic>> _transcribeLabel(String path) async =>
-      widget.editor.assistant.ask(
-          instructions: mealLabelInstructions,
-          prompt: 'Transcribe the selected nutrition label.',
-          images: [await encodeMealUpload(path, media: _media)],
-          task: InferenceTask.labelOcr);
+  Future<Map<String, dynamic>> _transcribeLabel(String path) =>
+      _controller.transcribeLabel(path);
 
   Future<void> _enterLabel(int index, String path,
       {Map<String, dynamic>? initialResponse}) async {
@@ -503,70 +510,31 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     if (photoPath == null && caption.isEmpty && _items.isEmpty) return;
     _start('Saving meal…');
     try {
-      final id = _requestId;
-      final editor = widget.editor;
-      final meal = PhotoMeal(
-        id: id,
+      final outcome = await _controller.saveNew(
+        requestId: _requestId,
         date: _date,
         slot: _slot,
         caption: caption,
-        createdAt: DateTime.now(),
-        recordedOffsetMinutes: _openedAt.timeZoneOffset.inMinutes,
         photoPath: photoPath,
-        items: _withIds(_items),
-        estimateStatus:
-            withEstimate ? MealEstimateStatus.pending : MealEstimateStatus.none,
+        items: _items,
+        recordedOffsetMinutes: _openedAt.timeZoneOffset.inMinutes,
+        withEstimate: withEstimate,
+        onProtect: _protectForWrite,
+        onRelease: _release,
       );
-      final paths = _protectForWrite(meal);
-      final repository = editor.repository;
-      final savedNew = await (editor.gate != null
-          ? editor.gate!.runWrite(() => repository.saveNew(meal))
-          : repository.saveNew(meal));
-      if (!savedNew) {
-        final matching = (await repository.listFor(
-          meal.date,
-        ))
-            .where((saved) => saved.id == id)
-            .firstOrNull;
-        final matchedPaths = {
-          matching?.photoPath,
-          for (final item in matching?.items ?? const <PhotoMealItem>[])
-            ...item.labelPaths,
-        };
-        _release(paths.where((path) => !matchedPaths.contains(path)).toSet());
-        if (matching == null) {
-          _showError('Could not save the meal. Try again.');
-          return;
-        }
-        _saved('This meal was already saved under ${matching.slot.label}.');
-        return;
+      switch (outcome) {
+        case SaveNewSaved(:final meal, :final message):
+          if (mounted) widget.editor.onLogged?.call(meal.date);
+          _saved(message);
+        case SaveNewAlreadySaved(:final message):
+          _saved(message);
+        case SaveNewFailed(:final message):
+          _showError(message);
       }
-      if (withEstimate) {
-        unawaited(estimateSavedMeal(
-          meal: meal,
-          repository: repository,
-          assistant: editor.assistant,
-          media: _media,
-          newId: editor.newId,
-          activeEstimates: editor.activeEstimates,
-          statusStore: editor.estimateStatusStore,
-          fence: editor.fence,
-          gate: editor.gate,
-        ));
-      }
-      if (mounted) editor.onLogged?.call(meal.date);
-      _saved('Saved under ${meal.slot.label} · ${meal.date.toIso()}.');
-    } catch (_) {
-      _showError('Could not save the meal. Try again.');
     } finally {
       _finish();
     }
   }
-
-  List<PhotoMealItem> _withIds(List<PhotoMealItem> items) => [
-        for (final item in items)
-          item.id == null ? item.copyWith(id: widget.editor.newId()) : item,
-      ];
 
   Future<void> _pickDate() async {
     final today = widget.editor.today ?? widget.editor.date;
@@ -587,95 +555,31 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     if (_busy || _conflict) return;
     final original = _original!;
     final today = widget.editor.today ?? widget.editor.date;
-    if (_date.compareTo(today) > 0) {
-      _showError('Diary date cannot be in the future.');
-      return;
-    }
-    final caption = _caption.text.trim();
-    final items = _withIds(_items);
-    final updated = original.copyWith(
-      date: _date,
-      slot: _slot,
-      caption: caption,
-      items: items,
-      photoPath: _photoPath,
-      clearPhoto: _photoPath == null,
-      estimateStatus: original.estimateStatus == MealEstimateStatus.pending
-          ? MealEstimateStatus.none
-          : original.estimateStatus,
-    );
     _start('Saving changes…');
-    final paths = _protectForWrite(updated);
     try {
-      final mutations = widget.editor.mutations;
-      if (mutations != null) {
-        final requestId = _saveRequestId ??= widget.editor.newId();
-        final onlyDateChanged = _date != original.date &&
-            _slot == original.slot &&
-            caption == original.caption &&
-            _photoPath == original.photoPath &&
-            _items.length == original.items.length &&
-            _items.indexed.every((e) => e.$2 == original.items[e.$1]);
-        Future<MealMutationResult> applyMutation() => onlyDateChanged
-            ? mutations.apply(MoveMeal(
-                requestId: requestId,
-                mealId: original.id,
-                expectedRevision: original.revision,
-                date: _date,
-                today: today,
-              ))
-            : mutations.apply(ReviseMeal(
-                requestId: requestId,
-                meal: updated,
-                expectedRevision: original.revision,
-              ));
-        final result = await (widget.editor.gate != null
-            ? widget.editor.gate!.runWrite(applyMutation)
-            : applyMutation());
-        switch (result.status) {
-          case MutationStatus.applied:
-          case MutationStatus.alreadyApplied:
-            widget.editor.onMutated?.call(original.date, _date);
-            _saved(_date != original.date
-                ? 'Meal moved to ${_date.toIso()}.'
-                : 'Meal updated.');
-          case MutationStatus.stale:
-            _release(paths);
-            if (!mounted) return;
-            setState(() => _conflict = true);
-            _showError(
-                'This meal changed or was removed while you were editing. Go back and reopen it to edit the latest version.');
-          case MutationStatus.notFound:
-            _release(paths);
-            if (!mounted) return;
-            setState(() => _conflict = true);
-            _showError('This meal was already removed.');
-          case MutationStatus.invalidDate:
-            _release(paths);
-            _showError('Diary date cannot be in the future.');
-          case MutationStatus.expired:
-            _release(paths);
-            _showError('Could not save your changes. Try again.');
-        }
-        return;
+      final outcome = await _controller.saveChanges(
+        original: original,
+        date: _date,
+        today: today,
+        slot: _slot,
+        caption: _caption.text,
+        photoPath: _photoPath,
+        items: _items,
+        requestId: _saveRequestId ??= widget.editor.newId(),
+        onProtect: _protectForWrite,
+        onRelease: _release,
+      );
+      switch (outcome) {
+        case SaveChangesApplied(:final oldDate, :final newDate, :final message):
+          widget.editor.onMutated?.call(oldDate, newDate);
+          _saved(message);
+        case SaveChangesConflict(:final message):
+          if (!mounted) return;
+          setState(() => _conflict = true);
+          _showError(message);
+        case SaveChangesFailed(:final message):
+          _showError(message);
       }
-
-      final replaced = await (widget.editor.gate != null
-          ? widget.editor.gate!.runWrite(() =>
-              widget.editor.repository.replace(updated, original.revision))
-          : widget.editor.repository.replace(updated, original.revision));
-      if (replaced) {
-        widget.editor.onMutated?.call(original.date, _date);
-        _saved('Meal updated.');
-      } else {
-        _release(paths);
-        if (!mounted) return;
-        setState(() => _conflict = true);
-        _showError(
-            'This meal changed or was removed while you were editing. Go back and reopen it to edit the latest version.');
-      }
-    } catch (_) {
-      _showError('Could not save your changes. Try again.');
     } finally {
       _finish();
     }
@@ -713,25 +617,18 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
 
     _start('Deleting meal…');
     try {
-      final requestId = _deleteRequestId ??= widget.editor.newId();
-      Future<MealMutationResult> applyDelete() => mutations.apply(DeleteMeal(
-            requestId: requestId,
-            mealId: original.id,
-            expectedRevision: original.revision,
-          ));
-      final result = await (widget.editor.gate != null
-          ? widget.editor.gate!.runWrite(applyDelete)
-          : applyDelete());
-      switch (result.status) {
-        case MutationStatus.applied:
-        case MutationStatus.alreadyApplied:
+      final outcome = await _controller.deleteMeal(
+        original: original,
+        requestId: _deleteRequestId ??= widget.editor.newId(),
+      );
+      switch (outcome) {
+        case DeleteMealApplied(:final mealDate, :final undoToken):
           if (!mounted) return;
-          final undoToken = result.undoToken;
           final messenger = ScaffoldMessenger.of(context);
           final onMutated = widget.editor.onMutated;
           final newId = widget.editor.newId;
           final gate = widget.editor.gate;
-          onMutated?.call(original.date, original.date);
+          onMutated?.call(mealDate, mealDate);
           Navigator.of(context).pop();
           messenger.showSnackBar(SnackBar(
             duration: const Duration(seconds: 10),
@@ -745,27 +642,19 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                       mutations: mutations,
                       undoToken: undoToken,
                       newId: newId,
-                      mealDate: original.date,
+                      mealDate: mealDate,
                       onMutated: onMutated,
                       gate: gate,
                     ),
                   ),
           ));
-        case MutationStatus.stale:
+        case DeleteMealConflict(:final message):
           if (!mounted) return;
           setState(() => _conflict = true);
-          _showError(
-              'This meal changed while you were editing. Go back and reopen it before deleting.');
-        case MutationStatus.notFound:
-          if (!mounted) return;
-          setState(() => _conflict = true);
-          _showError('This meal was already deleted.');
-        case MutationStatus.expired:
-        case MutationStatus.invalidDate:
-          _showError('Could not delete this meal. Try again.');
+          _showError(message);
+        case DeleteMealFailed(:final message):
+          _showError(message);
       }
-    } catch (_) {
-      _showError('Could not delete this meal. Try again.');
     } finally {
       _finish();
     }
@@ -781,12 +670,12 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     DataWriteGate? gate,
   }) async {
     try {
-      Future<MealMutationResult> applyUndo() => mutations.apply(UndoMeal(
-            requestId: newId(),
-            undoToken: undoToken,
-          ));
-      final undone =
-          await (gate != null ? gate.runWrite(applyUndo) : applyUndo());
+      final undone = await MealEditorController.undoDelete(
+        mutations: mutations,
+        undoToken: undoToken,
+        requestId: newId(),
+        gate: gate,
+      );
       switch (undone.status) {
         case MutationStatus.applied:
         case MutationStatus.alreadyApplied:
@@ -1282,4 +1171,13 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       ),
     );
   }
+}
+
+final class _CallbackIdGenerator implements IdGenerator {
+  const _CallbackIdGenerator(this._next);
+
+  final String Function() _next;
+
+  @override
+  String next() => _next();
 }
