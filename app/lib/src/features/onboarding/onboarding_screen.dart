@@ -1,25 +1,44 @@
 import 'package:flutter/material.dart';
+import 'package:salu_data/salu_data.dart';
 
+import 'onboarding_wizard.dart';
 import 'planning_profile.dart';
 
 /// Standalone profile setup/edit screen, suitable for a top-level route.
 class OnboardingScreen extends StatelessWidget {
-  const OnboardingScreen(
-      {super.key, this.store, this.onSaved, this.firstRun = false});
+  const OnboardingScreen({
+    super.key,
+    this.store,
+    this.onboardingStore,
+    this.onSaved,
+    this.firstRun = false,
+    this.openConnections,
+  });
 
   static const routeName = '/onboarding';
 
   final PlanningProfileStore? store;
+  final OnboardingStore? onboardingStore;
   final VoidCallback? onSaved;
   final bool firstRun;
+  final Future<void> Function(BuildContext)? openConnections;
 
   @override
-  Widget build(BuildContext context) => _ProfileEditor(
-        store: store ?? PlanningProfileStore.local,
-        preferencesOnly: false,
-        onSaved: onSaved,
-        firstRun: firstRun,
+  Widget build(BuildContext context) {
+    if (firstRun && onboardingStore != null) {
+      return OnboardingWizard(
+        store: onboardingStore!,
+        onCompleted: onSaved ?? () {},
+        openConnections: openConnections,
       );
+    }
+    return _ProfileEditor(
+      store: store ?? PlanningProfileStore.local,
+      preferencesOnly: false,
+      onSaved: onSaved,
+      firstRun: firstRun,
+    );
+  }
 }
 
 /// The Plan workspace can edit food preferences without collecting weight.

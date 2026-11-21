@@ -39,6 +39,8 @@ final documentStoreProvider = Provider<LocalDocumentStore>(
     (ref) => LocalDocumentStore(ref.watch(databaseProvider)));
 final planningProfileStoreProvider = Provider<PlanningProfileStore>(
     (ref) => PlanningProfileStore(documents: ref.watch(documentStoreProvider)));
+final onboardingStoreProvider = Provider<OnboardingStore>(
+    (ref) => OnboardingStore(ref.watch(documentStoreProvider)));
 final weekPlanStoreProvider = Provider<WeekPlanStore>(
     (ref) => WeekPlanStore(documents: ref.watch(documentStoreProvider)));
 

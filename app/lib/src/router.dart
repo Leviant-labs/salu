@@ -28,6 +28,9 @@ final appRouter = GoRouter(
       builder: (context, state) => Consumer(
           builder: (context, ref, child) => OnboardingScreen(
                 store: ref.watch(planningProfileStoreProvider),
+                onboardingStore: state.uri.queryParameters.containsKey('first')
+                    ? ref.watch(onboardingStoreProvider)
+                    : null,
                 onSaved: () =>
                     context.canPop() ? context.pop() : context.go('/today'),
                 firstRun: state.uri.queryParameters.containsKey('first'),
@@ -173,6 +176,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         if (snapshot.data != true) {
           return OnboardingScreen(
             store: ref.read(planningProfileStoreProvider),
+            onboardingStore: ref.read(onboardingStoreProvider),
             firstRun: true,
             onSaved: () => setState(() {
               _setup = Future.value(true);

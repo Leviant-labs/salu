@@ -73,7 +73,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Welcome to Salu'), findsOneWidget);
-    await _scrollAndTap(tester, find.text('Skip for now'));
+    await _scrollAndTap(tester, find.text('Skip setup'));
 
     await _scrollAndTap(tester, find.text('Log a meal'));
 
