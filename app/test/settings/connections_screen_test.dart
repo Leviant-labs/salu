@@ -602,6 +602,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // 1. Meals (TodayScreen retry uses overridden assistantProvider).
+    await tester.ensureVisible(find.text('Retry AI estimate'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Retry AI estimate'));
     await tester.pumpAndSettle();
     expect(api.requests, hasLength(1));

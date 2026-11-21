@@ -10,12 +10,18 @@ import 'features/plan/recipe_library.dart';
 import 'features/plan/recipe_planning.dart';
 import 'features/meals/meal_editor.dart';
 import 'features/search/food_library.dart';
+import 'features/search/library_controller.dart';
+import 'features/search/library_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/search/search_screen.dart';
+import 'features/plan/cooked_batches.dart';
 import 'features/settings/connections_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/today/today_screen.dart';
+import 'l10n/l10n_helper.dart';
 import 'providers.dart';
+import 'theme/glass_surface.dart';
+import 'theme/tactile_controls.dart';
 
 /// Route table.
 ///
@@ -68,6 +74,12 @@ final appRouter = GoRouter(
             GoRoute(
               path: '/search',
               builder: (context, state) => const SearchScreen(),
+              routes: [
+                GoRoute(
+                  path: 'library',
+                  builder: (context, state) => const _LibraryRoute(),
+                ),
+              ],
             ),
           ],
         ),
@@ -162,11 +174,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   Future<bool> _loadSetup() async =>
       (await ref.read(planningProfileStoreProvider).load()).onboarded;
 
-  static const _titles = ['Today', 'Food', 'Plan', 'Settings'];
-
   @override
   Widget build(BuildContext context) {
     final navigationShell = widget.navigationShell;
+    final l10n = saluL10n(context);
     return FutureBuilder<bool>(
       future: _setup,
       builder: (context, snapshot) {
@@ -180,23 +191,21 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text('Could not open your profile',
+                  Text(l10n.profileOpenErrorTitle,
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
-                  const Text(
-                      'Try again, or continue to your diary and set up your profile later.',
-                      textAlign: TextAlign.center),
+                  Text(l10n.profileOpenErrorBody, textAlign: TextAlign.center),
                   const SizedBox(height: 16),
-                  FilledButton(
+                  SaluTactileButton(
                       onPressed: () => setState(() {
                             _setup = _loadSetup();
                           }),
-                      child: const Text('Try again')),
+                      child: Text(l10n.actionTryAgain)),
                   TextButton(
                       onPressed: () => setState(() {
                             _setup = Future.value(true);
                           }),
-                      child: const Text('Continue to diary')),
+                      child: Text(l10n.actionContinueToDiary)),
                 ]),
               ),
             ),
@@ -226,37 +235,131 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 
   Widget _home(StatefulNavigationShell navigationShell) {
+    final l10n = saluL10n(context);
+    final titles = [
+      l10n.navToday,
+      l10n.navFood,
+      l10n.navPlan,
+      l10n.navSettings,
+    ];
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[navigationShell.currentIndex])),
+      appBar: AppBar(title: Text(titles[navigationShell.currentIndex])),
       body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) => navigationShell.goBranch(
-          index,
-          initialLocation: index == navigationShell.currentIndex,
+      bottomNavigationBar: GlassSurface(
+        borderRadius: BorderRadius.zero,
+        accentBorder: true,
+        child: NavigationBar(
+          selectedIndex: navigationShell.currentIndex,
+          onDestinationSelected: (index) => navigationShell.goBranch(
+            index,
+            initialLocation: index == navigationShell.currentIndex,
+          ),
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.today_outlined),
+              selectedIcon: const Icon(Icons.today),
+              label: l10n.navToday,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.search_outlined),
+              selectedIcon: const Icon(Icons.search),
+              label: l10n.navFood,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.event_note_outlined),
+              selectedIcon: const Icon(Icons.event_note),
+              label: l10n.navPlan,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.settings_outlined),
+              selectedIcon: const Icon(Icons.settings),
+              label: l10n.navSettings,
+            ),
+          ],
         ),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.today_outlined),
-            selectedIcon: Icon(Icons.today),
-            label: 'Today',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.search_outlined),
-            selectedIcon: Icon(Icons.search),
-            label: 'Food',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.event_note_outlined),
-            selectedIcon: Icon(Icons.event_note),
-            label: 'Plan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+      ),
+    );
+  }
+}
+
+class _LibraryRoute extends ConsumerStatefulWidget {
+  const _LibraryRoute();
+
+  @override
+  ConsumerState<_LibraryRoute> createState() => _LibraryRouteState();
+}
+
+class _LibraryRouteState extends ConsumerState<_LibraryRoute> {
+  late final LibraryController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final docs = ref.read(documentStoreProvider);
+    final gate = ref.read(dataWriteGateProvider);
+    final foods = ref.read(foodRepositoryProvider);
+    _controller = LibraryController(
+      foodLibrary: FoodLibrary(docs, gate: gate),
+      recipeLibrary: RecipeLibrary(foods, docs, gate: gate),
+      cookedBatches: CookedBatches(docs, gate: gate),
+      gate: gate,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openEditor({
+    String description = '',
+    List<core.PhotoMealItem> items = const [],
+  }) async {
+    await Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MealEditor(
+          repository: ref.read(photoMealRepositoryProvider),
+          assistant: ref.read(assistantProvider),
+          media: ref.read(managedMediaStoreProvider),
+          activeEstimates: ref.read(activeMealEstimatesProvider),
+          estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
+          gate: ref.read(dataWriteGateProvider),
+          fence: ref.read(operationFenceProvider),
+          foods: ref.read(foodRepositoryProvider),
+          date: ref.read(todayDiaryDateProvider),
+          today: ref.read(todayDiaryDateProvider),
+          library: _controller.foodLibrary,
+          newId: ref.read(idGeneratorProvider).next,
+          initialDescription: description,
+          initialItems: items,
+        ),
+      ),
+    );
+    if (mounted) ref.invalidate(todayMealsProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LibraryScreen(
+      controller: _controller,
+      onUseFood: (food) async {
+        final item = await pickSavedFoodPortion(context, food);
+        if (mounted && item != null) {
+          await _openEditor(description: food.name, items: [item]);
+        }
+      },
+      onUseMeal: (meal) => _openEditor(
+        description: meal.name,
+        items: meal.items,
+      ),
+      onUseRecipe: (recipe) => _openEditor(
+        description: recipe.name,
+        items: recipe.snapshot(1),
+      ),
+      onUseBatch: (stored) => _openEditor(
+        description: stored.batch.recipe.name,
+        items: stored.batch.recipe.snapshot(1),
       ),
     );
   }

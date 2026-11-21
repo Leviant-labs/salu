@@ -41,6 +41,8 @@ check_in "salu_data must not import Flutter or the app" \
 check_in "extracted presentation widgets must not import salu_data or dart:io" \
   "(package:salu_data|dart:io)" \
   app/lib/src/features/meals/meal_editor.dart \
-  app/lib/src/features/plan/plan_screen.dart
+  app/lib/src/features/plan/plan_screen.dart \
+  app/lib/src/features/search/library_screen.dart \
+  app/lib/src/features/today/diary_summary.dart
 
 exit "$status"

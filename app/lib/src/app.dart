@@ -1,48 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import 'router.dart';
-
-const _saluSeed = Color(0xFF3E7B4F);
+import 'theme/salu_theme.dart';
 
 /// Shared Material 3 theme used by both [SaluApp] and startup screens.
-ThemeData saluTheme(Brightness brightness) {
-  final scheme =
-      ColorScheme.fromSeed(seedColor: _saluSeed, brightness: brightness);
-  return ThemeData(
-    colorScheme: scheme,
-    useMaterial3: true,
-    scaffoldBackgroundColor: scheme.surface,
-    appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surface,
-      centerTitle: false,
-      titleTextStyle: TextStyle(
-        color: scheme.onSurface,
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-    cardTheme: CardThemeData(
-      color: scheme.surfaceContainerLow,
-      elevation: 0,
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: scheme.surfaceContainerLow,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: scheme.surfaceContainer,
-      indicatorColor: scheme.secondaryContainer,
-      labelTextStyle: WidgetStateProperty.all(
-        const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-    ),
-  );
-}
+ThemeData saluTheme(Brightness brightness) =>
+    brightness == Brightness.dark ? SaluTheme.dark() : SaluTheme.light();
 
-/// App shell: theme and routing. No business logic lives here.
+/// App shell: dark-luxury default theme, localization, and routing.
 class SaluApp extends StatelessWidget {
   /// Creates the app widget.
   const SaluApp({super.key});
@@ -52,8 +18,11 @@ class SaluApp extends StatelessWidget {
     return MaterialApp.router(
       title: 'Salu',
       debugShowCheckedModeBanner: false,
-      theme: saluTheme(Brightness.light),
-      darkTheme: saluTheme(Brightness.dark),
+      themeMode: ThemeMode.dark,
+      theme: SaluTheme.light(),
+      darkTheme: SaluTheme.dark(),
+      supportedLocales: const [Locale('en'), Locale('pt', 'PT')],
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: appRouter,
     );
   }

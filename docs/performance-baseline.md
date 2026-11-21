@@ -22,3 +22,8 @@ dart --packages=.dart_tool/package_config.json ../../tool/benchmark_catalogue.da
 | Windows host (dev) | Dart `3.12.0` (Flutter `3.44.0`), Windows 11 Home 10.0 (Build 26300), `windows_x64` | 25,000 synthetic `fixture` rows | `1894.70 ms` | `2.61 ms` | `true` (`before=25001`, `after=25001`) | `68.75 ms` / `77.69 ms` (10 queries) | `489.43 ms` / `521.78 ms` (10 queries) | `6,164,480 B` (`5.88 MiB`) | Not captured in Dart VM script |
 | Android device (named physical device) | Unverified — pending physical device run | 25,000 synthetic `fixture` rows | Unverified | Unverified | Unverified | Unverified | Unverified | Unverified | Unverified |
 | iOS device (named physical device) | Unverified — pending physical device run | 25,000 synthetic `fixture` rows | Unverified | Unverified | Unverified | Unverified | Unverified | Unverified | Unverified |
+
+## Daily UX & Rendering Notes
+
+- **Bundled catalogue baseline:** 78 foods and 8 recipes remain the honest offline baseline; separately licensed regional nutrition packs remain out of scope.
+- **Frosted glass GPU discipline:** `GlassSurface` applies `BackdropFilter` (`sigma = 12.0`) only to static chrome (shell navigation bar, Today hero `DiarySummary`, and `MealEditor` SafeArea footer), while scrolling list rows use `frosted: false` to avoid GPU overdraw. Physical Android/iOS GPU frame-time measurements remain pending device verification.

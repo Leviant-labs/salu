@@ -7,19 +7,26 @@ target design.
 
 ## Working slice
 
-Today renders photo cards by meal slot and combines original diary rows with
-meal snapshots for totals. The meal is saved before AI runs; Drift's diary watch
-updates the card after a successful revision-checked enrichment. The editor
-supports reviewed label evidence per item and correction previews for saved meals.
-Photos are app-support files; meal records store their paths. First-run setup
-runs a seven-page resumable wizard backed by a revisioned SQLite draft that
-commits atomically to the planning profile on finish (or marks setup skipped),
-while Settings keeps a compact optional-field profile editor and Plan edits food
-preferences directly. The food library offers catalogue search, saved foods and
-meals, and versioned recipes. The Plan workspace uses resolved recipes and
-bounded portions and derives the shopping list from the confirmed plan. The
-local check-in reads diary, weight, and activity observations and compares them
-to user-declared intentions.
+Today renders the daily nutrition summary (`DiarySummary`) above photo cards by
+meal slot and combines original diary rows with meal snapshots for totals,
+exposing partial/estimated/unknown states semantically. The meal is saved before
+AI runs; Drift's diary watch updates the card after a successful revision-checked
+enrichment. The editor anchors its primary Save action in a keyboard-aware
+`SafeArea` footer and supports reviewed label evidence per item and correction
+previews for saved meals. Photos are app-support files; meal records store their
+paths. First-run setup runs a seven-page resumable wizard backed by a revisioned
+SQLite draft that commits atomically to the planning profile on finish (or marks
+setup skipped), while Settings keeps a compact optional-field profile editor and
+Plan edits food preferences directly. The food library offers catalogue search
+and a stateful 4-tab `/search/library` route (`Foods`, `Meals`, `Recipes`,
+`Leftovers`) with live filtering and lazy list builders. The Plan workspace uses
+resolved recipes and bounded portions and derives the shopping list from the
+confirmed plan. The local check-in reads diary, weight, and activity observations
+and compares them to user-declared intentions. The UI defaults to a dark-luxury
+emerald-accented glassmorphic/neumorphic theme (`SaluSurfaceTokens`,
+`GlassSurface`, `SaluTactileButton`, `SaluTactileToggle`) with an accessible
+light fallback, `en` and `pt_PT` localization via `flutter gen-l10n`, and
+locale-aware number formatting (`localized_numbers.dart`).
 
 ## Modules
 

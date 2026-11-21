@@ -106,7 +106,9 @@ function Invoke-BoundaryCheckFallback {
 
   $widgetTargets = @(
     'app/lib/src/features/meals/meal_editor.dart',
-    'app/lib/src/features/plan/plan_screen.dart'
+    'app/lib/src/features/plan/plan_screen.dart',
+    'app/lib/src/features/search/library_screen.dart',
+    'app/lib/src/features/today/diary_summary.dart'
   ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { Get-Item -LiteralPath $_ }
   $widgetHits = $widgetTargets | Select-String -Pattern '(package:salu_data|dart:io)'
   if ($widgetHits) {
@@ -152,6 +154,7 @@ try {
   Push-Location 'app'
   try {
     Invoke-Checked 'flutter' @('pub', 'get', '--enforce-lockfile')
+    Invoke-Checked 'flutter' @('gen-l10n')
   } finally {
     Pop-Location
   }

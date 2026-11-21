@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
@@ -11,6 +12,8 @@ import '../meals/meal_editor_data.dart';
 import '../plan/recipe_library.dart';
 import '../plan/cooked_batches.dart';
 import 'food_library.dart';
+import 'library_controller.dart';
+import 'library_screen.dart';
 
 /// Local food search, with editable portions in the meal editor.
 class SearchScreen extends ConsumerStatefulWidget {
@@ -101,116 +104,40 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Future<void> _openLibrary() async {
-    final repo = ref.read(photoMealRepositoryProvider);
-    final recipes = RecipeLibrary(
-      ref.read(foodRepositoryProvider),
-      ref.read(documentStoreProvider),
-      gate: ref.read(dataWriteGateProvider),
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      router.go(LibraryScreen.routePath);
+      return;
+    }
+    final docs = ref.read(documentStoreProvider);
+    final gate = ref.read(dataWriteGateProvider);
+    final foods = ref.read(foodRepositoryProvider);
+    final controller = LibraryController(
+      foodLibrary: _library,
+      recipeLibrary: RecipeLibrary(foods, docs, gate: gate),
+      cookedBatches: CookedBatches(docs, gate: gate),
+      gate: gate,
     );
     try {
-      final foods = await _library.foods();
-      final meals = await _library.meals();
-      final recipeList = await recipes.load();
-      final today = ref.read(todayDiaryDateProvider);
-      final recent = (await Future.wait(
-              [for (var i = 0; i < 7; i++) repo.listFor(today.addDays(-i))]))
-          .expand((group) => group.reversed)
-          .where((meal) => meal.items.isNotEmpty)
-          .take(12)
-          .toList();
-      final favorites = (await Future.wait(
-              _favorites.map(ref.read(foodRepositoryProvider).findById)))
-          .whereType<Food>()
-          .toList();
-      if (!mounted) return;
-      final action = await showDialog<Future<void> Function()>(
-          context: context,
-          builder: (context) =>
-              SimpleDialog(title: const Text('Your food library'), children: [
-                const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text('Saved foods and favorite catalogue items')),
-                for (final food in foods)
-                  SimpleDialogOption(
-                      onPressed: () =>
-                          Navigator.pop(context, () => _openSavedFood(food)),
-                      child: Text(food.name)),
-                for (final food in favorites)
-                  SimpleDialogOption(
-                      onPressed: () =>
-                          Navigator.pop(context, () => _openMeal(food: food)),
-                      child: Text('★ ${food.name}')),
-                if (foods.isNotEmpty)
-                  const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text('Edit saved foods')),
-                for (final food in foods)
-                  SimpleDialogOption(
-                      onPressed: () =>
-                          Navigator.pop(context, () => _saveFood(saved: food)),
-                      child: Text('Edit ${food.name}')),
-                const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text('Recipes and saved meals')),
-                for (final recipe in recipeList)
-                  SimpleDialogOption(
-                      onPressed: () =>
-                          Navigator.pop(context, () => _useRecipe(recipe)),
-                      child: Text(recipe.version == 1
-                          ? recipe.name
-                          : '${recipe.name} · v${recipe.version}')),
-                for (final recipe in recipeList.where((recipe) =>
-                    recipeList.every((other) =>
-                        other.id != recipe.id ||
-                        other.version <= recipe.version)))
-                  SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, () async {
-                            final isLocal =
-                                recipe.id.startsWith('local-recipe:');
-                            await createRecipe(
-                                this.context,
-                                recipes,
-                                isLocal
-                                    ? recipe.id
-                                    : 'local-recipe:${ref.read(idGeneratorProvider).next()}',
-                                previous: recipe,
-                                version: isLocal ? recipe.version + 1 : 1);
-                          }),
-                      child: Text('Adapt ${recipe.name}')),
-                for (final meal in meals)
-                  SimpleDialogOption(
-                      onPressed: () => Navigator.pop(
-                          context,
-                          () => _openMeal(
-                              description: meal.name, items: meal.items)),
-                      child: Text(meal.name)),
-                const Padding(
-                    padding: EdgeInsets.all(12), child: Text('Recent meals')),
-                for (final meal in recent)
-                  SimpleDialogOption(
-                      onPressed: () => Navigator.pop(
-                          context,
-                          () => _openMeal(
-                              description: meal.items
-                                  .map((item) => item.name)
-                                  .join(', '),
-                              items: meal.items
-                                  .map((item) => PhotoMealItem(
-                                      name: item.name,
-                                      portion: item.portion,
-                                      nutrients: item.nutrients,
-                                      source: item.source,
-                                      reviewIssues: item.reviewIssues))
-                                  .toList())),
-                      child: Text(
-                          '${meal.date.toIso()} · ${meal.items.map((item) => item.name).join(', ')}')),
-              ]));
-      if (mounted) await action?.call();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not load your food library.')));
-      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => LibraryScreen(
+            controller: controller,
+            onUseFood: _openSavedFood,
+            onUseMeal: (meal) => _openMeal(
+              description: meal.name,
+              items: meal.items,
+            ),
+            onUseRecipe: _useRecipe,
+            onUseBatch: (stored) => _openMeal(
+              description: stored.batch.recipe.name,
+              items: stored.batch.recipe.snapshot(1),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      controller.dispose();
     }
   }
 

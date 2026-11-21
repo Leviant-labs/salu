@@ -162,6 +162,11 @@ void main() {
 
     expect(find.text('65 g'), findsOneWidget);
     expect(find.text('Nutrition unknown'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Meal totals: Nutrition unknown'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Meal totals: Nutrition unknown'), findsOneWidget);
 
     final today = DiaryDate.ofLocal(DateTime.now());

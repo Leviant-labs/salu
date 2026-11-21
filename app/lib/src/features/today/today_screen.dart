@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:salu_core/salu_core.dart';
 
 import '../../assistant/assistant.dart';
+import '../../l10n/l10n_helper.dart';
 import '../../media/managed_media_store.dart';
 import '../../providers.dart';
+import '../../theme/tactile_controls.dart';
 import '../meals/meal_editor.dart';
 import '../meals/meal_editor_ai.dart';
 import '../meals/meal_editor_data.dart';
 import '../meals/meal_estimation.dart';
 import '../settings/connections_screen.dart';
 import 'check_in_screen.dart';
+import 'diary_summary.dart';
 import '../search/food_library.dart';
+import '../search/library_screen.dart';
 
 /// The photo diary. Original single-food logs still appear and count here.
 class TodayScreen extends ConsumerWidget {
@@ -140,13 +145,14 @@ class TodayScreen extends ConsumerWidget {
           for (final item in meal.items) item.nutrients,
     ];
     final theme = Theme.of(context);
+    final l10n = saluL10n(context);
     final ready = meals.hasValue && entries.hasValue;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
         Row(children: [
           IconButton(
-              tooltip: 'Previous day',
+              tooltip: l10n.todayPreviousDay,
               icon: const Icon(Icons.chevron_left),
               onPressed: () => ref.read(diarySelectionProvider.notifier).state =
                   date.addDays(-1)),
@@ -156,7 +162,7 @@ class TodayScreen extends ConsumerWidget {
                   icon: const Icon(Icons.calendar_today_outlined),
                   label: Text(date.toIso()))),
           IconButton(
-              tooltip: 'Next day',
+              tooltip: l10n.todayNextDay,
               icon: const Icon(Icons.chevron_right),
               onPressed: date.compareTo(today) >= 0
                   ? null
@@ -164,28 +170,45 @@ class TodayScreen extends ConsumerWidget {
                       date.addDays(1)),
         ]),
         const SizedBox(height: 8),
-        Text('Meal diary',
+        Text(l10n.todayTitle,
             style: theme.textTheme.headlineMedium
                 ?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text('A little more awareness, one meal at a time.',
+        Text(l10n.todaySubtitle,
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 20),
-        FilledButton.icon(
+        const SizedBox(height: 12),
+        SaluTactileButton(
           onPressed: () => _edit(context, ref, null),
           icon: const Icon(Icons.add_a_photo_outlined),
-          label: const Text('Log a meal'),
+          child: Text(l10n.todayLogMeal),
         ),
-        TextButton.icon(
-            onPressed: () => _findCorrection(context, ref),
-            icon: const Icon(Icons.edit_note),
-            label: const Text('Find and correct a meal')),
-        TextButton.icon(
-            onPressed: () => Navigator.of(context).push<void>(
-                MaterialPageRoute(builder: (_) => CheckInScreen(date: date))),
-            icon: const Icon(Icons.insights_outlined),
-            label: const Text('Weekly check-in')),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 4,
+          runSpacing: 0,
+          children: [
+            TextButton.icon(
+                onPressed: () {
+                  final router = GoRouter.maybeOf(context);
+                  if (router != null) {
+                    router.go(LibraryScreen.routePath);
+                  }
+                },
+                icon: const Icon(Icons.bookmarks_outlined),
+                label: Text(l10n.todayReuseFromLibrary)),
+            TextButton.icon(
+                onPressed: () => _findCorrection(context, ref),
+                icon: const Icon(Icons.edit_note),
+                label: Text(l10n.todayFindCorrectMeal)),
+            TextButton.icon(
+                onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                        builder: (_) => CheckInScreen(date: date))),
+                icon: const Icon(Icons.insights_outlined),
+                label: Text(l10n.todayWeeklyCheckIn)),
+          ],
+        ),
         const SizedBox(height: 12),
         if (meals.hasError || entries.hasError)
           OutlinedButton(
@@ -193,10 +216,17 @@ class TodayScreen extends ConsumerWidget {
               ref.invalidate(todayMealsProvider);
               ref.invalidate(todayEntriesProvider);
             },
-            child: const Text('Could not load all meals. Try again'),
+            child: Text(l10n.todayLoadError),
           )
         else if (!ready)
           const LinearProgressIndicator(),
+        if (ready && profiles.isNotEmpty) ...[
+          DiarySummary(
+            profiles: profiles,
+            isToday: date == today,
+          ),
+          const SizedBox(height: 12),
+        ],
         if (ready && profiles.isEmpty) ...[
           const SizedBox(height: 20),
           Card(
@@ -211,11 +241,10 @@ class TodayScreen extends ConsumerWidget {
                           color: theme.colorScheme.onSecondaryContainer),
                     ),
                     const SizedBox(height: 16),
-                    Text('Nothing logged yet',
+                    Text(l10n.todayNothingLoggedTitle,
                         style: theme.textTheme.titleLarge),
                     const SizedBox(height: 6),
-                    Text(
-                        'Start with a meal photo, a description, or a food search.',
+                    Text(l10n.todayNothingLoggedBody,
                         style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant)),
                   ]),
@@ -258,51 +287,16 @@ class TodayScreen extends ConsumerWidget {
           ],
         if (legacy.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Individual foods', style: theme.textTheme.titleLarge),
+          Text(l10n.todayIndividualFoods, style: theme.textTheme.titleLarge),
           for (final entry in legacy)
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.restaurant_outlined),
               title: Text(entry.items.map((item) => item.name).join(', ')),
               subtitle: Text('${mealNumberText(entry.grams)} g · '
-                  '${_total(entry.items.map((item) => item.nutrients), NutrientKey.energyKcal)}'),
+                  '${formatNutrientRollup(entry.items.map((item) => item.nutrients), NutrientKey.energyKcal, partialLabel: l10n.todayPartialLabel)}'),
             ),
         ],
-        if (ready && profiles.isNotEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                      date == today ? 'Recorded today' : 'Recorded on this day',
-                      style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 8,
-                    children: [
-                      for (final key in const [
-                        NutrientKey.energyKcal,
-                        NutrientKey.proteinG,
-                        NutrientKey.carbohydrateG,
-                        NutrientKey.fatG,
-                        NutrientKey.fiberG
-                      ])
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(key.label),
-                            Text(_total(profiles, key))
-                          ],
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
       ],
     );
   }

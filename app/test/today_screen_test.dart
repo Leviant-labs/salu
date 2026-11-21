@@ -133,4 +133,11 @@ void main() {
     expect(find.text('≈190 kcal · partial · AI estimate'), findsOneWidget);
     expect(find.text('≈190 kcal · partial'), findsOneWidget);
   });
+
+  testWidgets('recorded summary appears before meal content', (tester) async {
+    await _pumpToday(tester, [_chickenEntry()]);
+    final summary = tester.getTopLeft(find.text('Recorded today'));
+    final food = tester.getTopLeft(find.text('Chicken breast, cooked'));
+    expect(summary.dy, lessThan(food.dy));
+  });
 }

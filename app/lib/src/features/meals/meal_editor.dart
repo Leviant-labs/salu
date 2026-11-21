@@ -9,6 +9,8 @@ import '../../assistant/assistant.dart';
 import '../../assistant/operation_fence.dart';
 import '../../data_transfer/data_write_gate.dart';
 import '../../media/managed_media_store.dart';
+import '../../theme/glass_surface.dart';
+import '../../theme/tactile_controls.dart';
 import '../search/food_library.dart';
 import 'meal_editor_ai.dart';
 import 'meal_editor_controller.dart';
@@ -227,8 +229,6 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
   void _showError(String message) {
     if (!mounted) return;
     setState(() => _error = message);
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<String?> _pickImage(ImageSource source) async {
@@ -769,329 +769,361 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(title: Text(isNew ? 'Log a meal' : 'Edit meal')),
-        body: SafeArea(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (_work case final work?) ...[
-                    const LinearProgressIndicator(),
-                    const SizedBox(height: 8),
-                    Semantics(liveRegion: true, child: Text(work)),
-                    const SizedBox(height: 12),
-                  ],
-                  if (_error case final error?) ...[
-                    Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        error,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (_recoveredPickerImages.isNotEmpty) ...[
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Recovered photo from interrupted picker',
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Attach it to this meal draft or discard it. Nothing is uploaded or saved automatically.',
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              children: [
-                                FilledButton(
-                                  onPressed:
-                                      _busy ? null : _attachRecoveredPhoto,
-                                  child: const Text('Attach to meal'),
-                                ),
-                                TextButton(
-                                  onPressed:
-                                      _busy ? null : _discardRecoveredPhotos,
-                                  child: const Text('Discard'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (_photoPath case final path?)
-                    SizedBox(
-                      height: 216,
-                      child: ManagedMediaImage(
-                        reference: path,
-                        media: _media,
-                        fit: BoxFit.contain,
-                        cacheWidth: 1200,
-                        semanticLabel: 'Meal photo',
-                        unavailableText: 'Meal photo unavailable.',
-                      ),
-                    ),
-                  if (isNew) ...[
-                    Text(
-                      'Meal photo',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const Text(
-                      'Take a picture or choose one from your gallery.',
-                    ),
-                    Wrap(
-                      spacing: 8,
+        body: Column(
+          children: [
+            Expanded(
+              child: SafeArea(
+                bottom: false,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
                       children: [
-                        OutlinedButton.icon(
-                          onPressed: _busy
-                              ? null
-                              : () => _pickMealPhoto(ImageSource.camera),
-                          icon: const Icon(Icons.photo_camera_outlined),
-                          label: const Text('Camera'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _busy
-                              ? null
-                              : () => _pickMealPhoto(ImageSource.gallery),
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: const Text('Gallery'),
-                        ),
-                        if (_photoPath != null)
-                          TextButton(
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() => _photoPath = null),
-                            child: const Text('Remove photo'),
-                          ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                      style: isNew
-                          ? null
-                          : TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 2,
+                        if (_work case final work?) ...[
+                          const LinearProgressIndicator(),
+                          const SizedBox(height: 8),
+                          Semantics(liveRegion: true, child: Text(work)),
+                          const SizedBox(height: 12),
+                        ],
+                        if (_error case final error?) ...[
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              error,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
                               ),
                             ),
-                      onPressed: _busy || _conflict ? null : _pickDate,
-                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                      label: Text(isNew && ambiguousDate
-                          ? 'Choose which diary date'
-                          : 'Diary date: ${_date.toIso()}')),
-                  TextField(
-                    controller: _caption,
-                    enabled: !_busy,
-                    minLines: 1,
-                    maxLines: 3,
-                    maxLength: 1000,
-                    decoration: InputDecoration(
-                      labelText: isNew
-                          ? 'What did you have? (optional with photo)'
-                          : 'Meal notes (optional)',
-                      hintText: isNew ? 'e.g. Lunch: soup and a roll' : null,
-                      counterText: '',
-                    ),
-                    onChanged: isNew
-                        ? (value) => setState(() {
-                              if (!_slotWasSelected) {
-                                _slot = mealSlotFor(value, _openedAt.hour);
-                              }
-                              if (!_dateWasSelected) {
-                                _date = mealDateFromIntent(
-                                        value,
-                                        widget.editor.today ??
-                                            widget.editor.date) ??
-                                    widget.editor.date;
-                              }
-                            })
-                        : null,
-                  ),
-                  const SizedBox(height: 8),
-                  InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Meal'),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<MealSlot>(
-                        isExpanded: true,
-                        value: _slot,
-                        items: [
-                          for (final slot in MealSlot.values)
-                            DropdownMenuItem(
-                              value: slot,
-                              child: Text(slot.label),
-                            ),
+                          ),
+                          const SizedBox(height: 12),
                         ],
-                        onChanged: _busy
-                            ? null
-                            : (slot) {
-                                if (slot == null) return;
-                                setState(() {
-                                  _slot = slot;
-                                  _slotWasSelected = true;
-                                });
-                              },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (isNew) ...[
-                    if (_items.isEmpty) ...[
-                      FilledButton.icon(
-                        onPressed: canSaveNew
-                            ? () => _saveNew(withEstimate: true)
-                            : null,
-                        icon: const Icon(Icons.auto_awesome_outlined),
-                        label: const Text('Save with AI estimate'),
-                      ),
-                      Text(
-                        'Save with AI sends the selected meal photo and any text above to ${_providerLabel ?? 'your selected AI provider'}. Provider plan limits or user-funded API billing may apply. The meal is saved with any available estimates, or locally without estimates if the provider is unavailable.',
-                      ),
-                    ],
-                    OutlinedButton(
-                      onPressed: canSaveNew
-                          ? () => _saveNew(withEstimate: false)
-                          : null,
-                      child: Text(
-                          _items.isEmpty ? 'Save without AI' : 'Save meal'),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  Text(
-                    'Foods',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  if (_items.isEmpty) const Text('No foods identified yet.'),
-                  for (var i = 0; i < _items.length; i++) _itemCard(i),
-                  Text('Meal totals: ${mealTotalDetails(_items)}'),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: _busy ? null : _addFood,
-                        child: const Text('Add food by name'),
-                      ),
-                      OutlinedButton(
-                        onPressed: _busy ? null : _addCatalogueFood,
-                        child: const Text('Search catalogue'),
-                      ),
-                      if (_items.isNotEmpty)
-                        OutlinedButton(
-                            onPressed: _busy ? null : () => _addLabel(),
-                            child: const Text('Match a label photo')),
-                      if (widget.editor.library != null) ...[
-                        OutlinedButton(
-                            onPressed: _busy ? null : _addSavedFood,
-                            child: const Text('Saved foods')),
-                        if (_items.isNotEmpty)
-                          TextButton(
-                              onPressed: _busy ? null : _saveTemplate,
-                              child: const Text('Save meal for reuse')),
-                      ],
-                    ],
-                  ),
-                  if (!isNew) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Describe a correction',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    TextField(
-                      controller: _correction,
-                      enabled: !_busy && !_conflict,
-                      maxLength: 1000,
-                      maxLines: 3,
-                      minLines: 1,
-                      onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Correction',
-                        hintText: 'e.g. I ate two rolls, not one',
-                        counterText: '',
-                      ),
-                    ),
-                    Text(
-                      'Preview with AI sends this correction, the meal slot, and current food names and amounts to ${_providerLabel ?? 'your selected AI provider'}. No photos or meal notes are sent. Provider plan limits or user-funded API billing may apply.',
-                    ),
-                    OutlinedButton(
-                      onPressed:
-                          _busy || _conflict || _correction.text.trim().isEmpty
-                              ? null
-                              : _requestCorrection,
-                      child: const Text('Preview correction with AI'),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _busy || _conflict
-                              ? null
-                              : () => _pickMealPhoto(ImageSource.camera),
-                          icon: const Icon(Icons.photo_camera_outlined),
-                          label: const Text('Camera'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _busy || _conflict
-                              ? null
-                              : () => _pickMealPhoto(ImageSource.gallery),
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: const Text('Gallery'),
-                        ),
-                        if (_photoPath != null)
-                          TextButton(
-                            onPressed: _busy || _conflict
+                        if (_recoveredPickerImages.isNotEmpty) ...[
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Recovered photo from interrupted picker',
+                                    style:
+                                        Theme.of(context).textTheme.titleSmall,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Attach it to this meal draft or discard it. Nothing is uploaded or saved automatically.',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    children: [
+                                      FilledButton(
+                                        onPressed: _busy
+                                            ? null
+                                            : _attachRecoveredPhoto,
+                                        child: const Text('Attach to meal'),
+                                      ),
+                                      TextButton(
+                                        onPressed: _busy
+                                            ? null
+                                            : _discardRecoveredPhotos,
+                                        child: const Text('Discard'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        if (_photoPath case final path?)
+                          SizedBox(
+                            height: 216,
+                            child: ManagedMediaImage(
+                              reference: path,
+                              media: _media,
+                              fit: BoxFit.contain,
+                              cacheWidth: 1200,
+                              semanticLabel: 'Meal photo',
+                              unavailableText: 'Meal photo unavailable.',
+                            ),
+                          ),
+                        if (isNew) ...[
+                          Text(
+                            'Meal photo',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const Text(
+                            'Take a picture or choose one from your gallery.',
+                          ),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _pickMealPhoto(ImageSource.camera),
+                                icon: const Icon(Icons.photo_camera_outlined),
+                                label: const Text('Camera'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _pickMealPhoto(ImageSource.gallery),
+                                icon: const Icon(Icons.photo_library_outlined),
+                                label: const Text('Gallery'),
+                              ),
+                              if (_photoPath != null)
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => setState(() => _photoPath = null),
+                                  child: const Text('Remove photo'),
+                                ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        TextButton.icon(
+                            style: isNew
                                 ? null
-                                : () => setState(() {
-                                      _photoPath = null;
-                                      _saveRequestId = null;
-                                    }),
-                            child: const Text('Remove photo'),
+                                : TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 2,
+                                    ),
+                                  ),
+                            onPressed: _busy || _conflict ? null : _pickDate,
+                            icon: const Icon(Icons.calendar_today_outlined,
+                                size: 18),
+                            label: Text(isNew && ambiguousDate
+                                ? 'Choose which diary date'
+                                : 'Diary date: ${_date.toIso()}')),
+                        TextField(
+                          controller: _caption,
+                          enabled: !_busy,
+                          minLines: 1,
+                          maxLines: 3,
+                          maxLength: 1000,
+                          decoration: InputDecoration(
+                            labelText: isNew
+                                ? 'What did you have? (optional with photo)'
+                                : 'Meal notes (optional)',
+                            hintText:
+                                isNew ? 'e.g. Lunch: soup and a roll' : null,
+                            counterText: '',
                           ),
+                          onChanged: isNew
+                              ? (value) => setState(() {
+                                    if (!_slotWasSelected) {
+                                      _slot =
+                                          mealSlotFor(value, _openedAt.hour);
+                                    }
+                                    if (!_dateWasSelected) {
+                                      _date = mealDateFromIntent(
+                                              value,
+                                              widget.editor.today ??
+                                                  widget.editor.date) ??
+                                          widget.editor.date;
+                                    }
+                                  })
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        InputDecorator(
+                          decoration: const InputDecoration(labelText: 'Meal'),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<MealSlot>(
+                              isExpanded: true,
+                              value: _slot,
+                              items: [
+                                for (final slot in MealSlot.values)
+                                  DropdownMenuItem(
+                                    value: slot,
+                                    child: Text(slot.label),
+                                  ),
+                              ],
+                              onChanged: _busy
+                                  ? null
+                                  : (slot) {
+                                      if (slot == null) return;
+                                      setState(() {
+                                        _slot = slot;
+                                        _slotWasSelected = true;
+                                      });
+                                    },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (isNew) ...[
+                          if (_items.isEmpty) ...[
+                            FilledButton.icon(
+                              onPressed: canSaveNew
+                                  ? () => _saveNew(withEstimate: true)
+                                  : null,
+                              icon: const Icon(Icons.auto_awesome_outlined),
+                              label: const Text('Save with AI estimate'),
+                            ),
+                            Text(
+                              'Save with AI sends the selected meal photo and any text above to ${_providerLabel ?? 'your selected AI provider'}. Provider plan limits or user-funded API billing may apply. The meal is saved with any available estimates, or locally without estimates if the provider is unavailable.',
+                            ),
+                          ],
+                        ],
+                        const SizedBox(height: 16),
+                        Text(
+                          'Foods',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        if (_items.isEmpty)
+                          const Text('No foods identified yet.'),
+                        for (var i = 0; i < _items.length; i++) _itemCard(i),
+                        Text('Meal totals: ${mealTotalDetails(_items)}'),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            OutlinedButton(
+                              onPressed: _busy ? null : _addFood,
+                              child: const Text('Add food by name'),
+                            ),
+                            OutlinedButton(
+                              onPressed: _busy ? null : _addCatalogueFood,
+                              child: const Text('Search catalogue'),
+                            ),
+                            if (_items.isNotEmpty)
+                              OutlinedButton(
+                                  onPressed: _busy ? null : () => _addLabel(),
+                                  child: const Text('Match a label photo')),
+                            if (widget.editor.library != null) ...[
+                              OutlinedButton(
+                                  onPressed: _busy ? null : _addSavedFood,
+                                  child: const Text('Saved foods')),
+                              if (_items.isNotEmpty)
+                                TextButton(
+                                    onPressed: _busy ? null : _saveTemplate,
+                                    child: const Text('Save meal for reuse')),
+                            ],
+                          ],
+                        ),
+                        if (!isNew) ...[
+                          const SizedBox(height: 16),
+                          Text(
+                            'Describe a correction',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          TextField(
+                            controller: _correction,
+                            enabled: !_busy && !_conflict,
+                            maxLength: 1000,
+                            maxLines: 3,
+                            minLines: 1,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Correction',
+                              hintText: 'e.g. I ate two rolls, not one',
+                              counterText: '',
+                            ),
+                          ),
+                          Text(
+                            'Preview with AI sends this correction, the meal slot, and current food names and amounts to ${_providerLabel ?? 'your selected AI provider'}. No photos or meal notes are sent. Provider plan limits or user-funded API billing may apply.',
+                          ),
+                          OutlinedButton(
+                            onPressed: _busy ||
+                                    _conflict ||
+                                    _correction.text.trim().isEmpty
+                                ? null
+                                : _requestCorrection,
+                            child: const Text('Preview correction with AI'),
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: _busy || _conflict
+                                    ? null
+                                    : () => _pickMealPhoto(ImageSource.camera),
+                                icon: const Icon(Icons.photo_camera_outlined),
+                                label: const Text('Camera'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _busy || _conflict
+                                    ? null
+                                    : () => _pickMealPhoto(ImageSource.gallery),
+                                icon: const Icon(Icons.photo_library_outlined),
+                                label: const Text('Gallery'),
+                              ),
+                              if (_photoPath != null)
+                                TextButton(
+                                  onPressed: _busy || _conflict
+                                      ? null
+                                      : () => setState(() {
+                                            _photoPath = null;
+                                            _saveRequestId = null;
+                                          }),
+                                  child: const Text('Remove photo'),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (widget.editor.mutations != null) ...[
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed:
+                                  _busy || _conflict ? null : _deleteMeal,
+                              icon: Icon(
+                                Icons.delete_outline,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                              label: Text(
+                                'Delete meal',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: _busy || _conflict ? null : _saveChanges,
-                      child: const Text('Save changes'),
-                    ),
-                    if (widget.editor.mutations != null) ...[
-                      const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: _busy || _conflict ? null : _deleteMeal,
-                        icon: Icon(
-                          Icons.delete_outline,
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                        label: Text(
-                          'Delete meal',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ],
+                  ),
+                ),
               ),
             ),
-          ),
+            SafeArea(
+              top: false,
+              child: SizedBox(
+                width: double.infinity,
+                child: GlassSurface(
+                  borderRadius: BorderRadius.zero,
+                  accentBorder: true,
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: isNew
+                      ? SaluTactileButton(
+                          primary: _items.isNotEmpty,
+                          onPressed: canSaveNew
+                              ? () => _saveNew(withEstimate: false)
+                              : null,
+                          child: Text(
+                            _items.isEmpty ? 'Save without AI' : 'Save meal',
+                          ),
+                        )
+                      : SaluTactileButton(
+                          onPressed: _busy || _conflict ? null : _saveChanges,
+                          child: const Text('Save changes'),
+                        ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

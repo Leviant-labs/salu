@@ -3,6 +3,10 @@
 Photo-first meal diary and AI-assisted weekly planning for iOS and Android.
 The diary and planner are usable offline; AI actions send only the inputs
 disclosed at the point of use. Salu has no account or backend.
+Ships with a dark-first luxury design system (`ThemeMode.dark` default with light
+fallback), English (`en`) and European Portuguese (`pt_PT`) localization, and an
+offline 78-food / 8-recipe baseline catalogue (separately licensed country packs
+remain out of scope).
 
 Spec: [`docs/product-spec.md`](docs/product-spec.md) (product contract and
 release gates), [`docs/architecture.md`](docs/architecture.md) (working slice and
