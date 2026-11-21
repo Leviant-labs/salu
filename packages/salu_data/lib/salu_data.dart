@@ -11,6 +11,7 @@ export 'src/catalogue/catalogue_pack.dart';
 export 'src/database/app_database.dart';
 export 'src/catalogue/bundled_catalogue.dart'
     show installBundledCatalogue, bundledCatalogueAttribution;
+export 'src/catalogue/search_index.dart';
 export 'src/dev_seed.dart';
 export 'src/repositories/drift_entry_repository.dart';
 export 'src/repositories/drift_food_repository.dart';
