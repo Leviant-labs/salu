@@ -108,6 +108,13 @@ final photoMealRepositoryProvider = Provider<PhotoMealRepository>(
   (ref) => DriftPhotoMealRepository(ref.watch(databaseProvider)),
 );
 
+final mealMutationRepositoryProvider = Provider<MealMutationRepository>(
+  (ref) => MealMutationRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
 final managedMediaStoreProvider = Provider<ManagedMediaStore>(
   (ref) => ManagedMediaStore(
     directory: getApplicationSupportDirectory,

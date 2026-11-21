@@ -21,6 +21,7 @@ class MealEditor extends StatelessWidget {
     super.key,
     this.meal,
     required this.repository,
+    this.mutations,
     required this.assistant,
     required this.foods,
     required this.date,
@@ -32,6 +33,7 @@ class MealEditor extends StatelessWidget {
     this.initialFood,
     this.today,
     this.onLogged,
+    this.onMutated,
     this.initialItems = const [],
     this.initialSlot,
     this.initialCorrection = '',
@@ -40,6 +42,7 @@ class MealEditor extends StatelessWidget {
 
   final PhotoMeal? meal;
   final PhotoMealRepository repository;
+  final MealMutationRepository? mutations;
   final SaluAssistant assistant;
   final ManagedMediaStore? media;
   final ActiveMealEstimates? activeEstimates;
@@ -51,6 +54,7 @@ class MealEditor extends StatelessWidget {
   final Food? initialFood;
   final DiaryDate? today;
   final ValueChanged<DiaryDate>? onLogged;
+  final void Function(DiaryDate oldDate, DiaryDate newDate)? onMutated;
   final List<PhotoMealItem> initialItems;
   final MealSlot? initialSlot;
   final String initialCorrection;
@@ -76,6 +80,8 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
           widget.editor.today ?? widget.editor.date) ??
       widget.editor.date;
   late final _requestId = widget.editor.newId();
+  String? _saveRequestId;
+  String? _deleteRequestId;
   late final _openedAt = DateTime.now();
   late final _caption = TextEditingController(
     text: _original?.caption ?? widget.editor.initialDescription,
@@ -569,10 +575,20 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
   Future<void> _saveChanges() async {
     if (_busy || _conflict) return;
     final original = _original!;
+    final today = widget.editor.today ?? widget.editor.date;
+    if (_date.compareTo(today) > 0) {
+      _showError('Diary date cannot be in the future.');
+      return;
+    }
+    final caption = _caption.text.trim();
+    final items = _withIds(_items);
     final updated = original.copyWith(
+      date: _date,
       slot: _slot,
-      caption: _caption.text.trim(),
-      items: _withIds(_items),
+      caption: caption,
+      items: items,
+      photoPath: _photoPath,
+      clearPhoto: _photoPath == null,
       estimateStatus: original.estimateStatus == MealEstimateStatus.pending
           ? MealEstimateStatus.none
           : original.estimateStatus,
@@ -580,7 +596,58 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
     _start('Saving changes…');
     final paths = _protectForWrite(updated);
     try {
+      final mutations = widget.editor.mutations;
+      if (mutations != null) {
+        final requestId = _saveRequestId ??= widget.editor.newId();
+        final onlyDateChanged = _date != original.date &&
+            _slot == original.slot &&
+            caption == original.caption &&
+            _photoPath == original.photoPath &&
+            _items.length == original.items.length &&
+            _items.indexed.every((e) => e.$2 == original.items[e.$1]);
+        final result = onlyDateChanged
+            ? await mutations.apply(MoveMeal(
+                requestId: requestId,
+                mealId: original.id,
+                expectedRevision: original.revision,
+                date: _date,
+                today: today,
+              ))
+            : await mutations.apply(ReviseMeal(
+                requestId: requestId,
+                meal: updated,
+                expectedRevision: original.revision,
+              ));
+        switch (result.status) {
+          case MutationStatus.applied:
+          case MutationStatus.alreadyApplied:
+            widget.editor.onMutated?.call(original.date, _date);
+            _saved(_date != original.date
+                ? 'Meal moved to ${_date.toIso()}.'
+                : 'Meal updated.');
+          case MutationStatus.stale:
+            _release(paths);
+            if (!mounted) return;
+            setState(() => _conflict = true);
+            _showError(
+                'This meal changed or was removed while you were editing. Go back and reopen it to edit the latest version.');
+          case MutationStatus.notFound:
+            _release(paths);
+            if (!mounted) return;
+            setState(() => _conflict = true);
+            _showError('This meal was already removed.');
+          case MutationStatus.invalidDate:
+            _release(paths);
+            _showError('Diary date cannot be in the future.');
+          case MutationStatus.expired:
+            _release(paths);
+            _showError('Could not save your changes. Try again.');
+        }
+        return;
+      }
+
       if (await widget.editor.repository.replace(updated, original.revision)) {
+        widget.editor.onMutated?.call(original.date, _date);
         _saved('Meal updated.');
       } else {
         _release(paths);
@@ -593,6 +660,138 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
       _showError('Could not save your changes. Try again.');
     } finally {
       _finish();
+    }
+  }
+
+  Future<void> _deleteMeal() async {
+    if (_busy || _conflict) return;
+    final original = _original!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this meal?'),
+        content: const Text(
+          'This removes the meal from your diary. You can undo this for 10 seconds from the diary. Deleting a meal logged from a cooked batch does not replenish remaining batch stock.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete meal'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final mutations = widget.editor.mutations;
+    if (mutations == null) {
+      _showError('Delete is unavailable right now.');
+      return;
+    }
+
+    _start('Deleting meal…');
+    try {
+      final requestId = _deleteRequestId ??= widget.editor.newId();
+      final result = await mutations.apply(DeleteMeal(
+        requestId: requestId,
+        mealId: original.id,
+        expectedRevision: original.revision,
+      ));
+      switch (result.status) {
+        case MutationStatus.applied:
+        case MutationStatus.alreadyApplied:
+          if (!mounted) return;
+          final undoToken = result.undoToken;
+          final messenger = ScaffoldMessenger.of(context);
+          final onMutated = widget.editor.onMutated;
+          final newId = widget.editor.newId;
+          onMutated?.call(original.date, original.date);
+          Navigator.of(context).pop();
+          messenger.showSnackBar(SnackBar(
+            duration: const Duration(seconds: 10),
+            content: const Text('Meal deleted.'),
+            action: undoToken == null
+                ? null
+                : SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () => _undoDelete(
+                      messenger: messenger,
+                      mutations: mutations,
+                      undoToken: undoToken,
+                      newId: newId,
+                      mealDate: original.date,
+                      onMutated: onMutated,
+                    ),
+                  ),
+          ));
+        case MutationStatus.stale:
+          if (!mounted) return;
+          setState(() => _conflict = true);
+          _showError(
+              'This meal changed while you were editing. Go back and reopen it before deleting.');
+        case MutationStatus.notFound:
+          if (!mounted) return;
+          setState(() => _conflict = true);
+          _showError('This meal was already deleted.');
+        case MutationStatus.expired:
+        case MutationStatus.invalidDate:
+          _showError('Could not delete this meal. Try again.');
+      }
+    } catch (_) {
+      _showError('Could not delete this meal. Try again.');
+    } finally {
+      _finish();
+    }
+  }
+
+  static Future<void> _undoDelete({
+    required ScaffoldMessengerState messenger,
+    required MealMutationRepository mutations,
+    required String undoToken,
+    required String Function() newId,
+    required DiaryDate mealDate,
+    required void Function(DiaryDate oldDate, DiaryDate newDate)? onMutated,
+  }) async {
+    try {
+      final undone = await mutations.apply(UndoMeal(
+        requestId: newId(),
+        undoToken: undoToken,
+      ));
+      switch (undone.status) {
+        case MutationStatus.applied:
+        case MutationStatus.alreadyApplied:
+          onMutated?.call(mealDate, mealDate);
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Meal restored.')),
+          );
+        case MutationStatus.expired:
+          messenger.showSnackBar(
+            const SnackBar(
+              content:
+                  Text('Could not undo: the 24-hour undo window has expired.'),
+            ),
+          );
+        case MutationStatus.stale:
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Could not undo: this meal was already changed or restored.'),
+            ),
+          );
+        case MutationStatus.notFound:
+        case MutationStatus.invalidDate:
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Could not undo the deletion.')),
+          );
+      }
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not undo the deletion.')),
+      );
     }
   }
 
@@ -767,15 +966,22 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                     ),
                   ],
                   const SizedBox(height: 12),
-                  if (isNew)
-                    TextButton.icon(
-                        onPressed: _busy ? null : _pickDate,
-                        icon: const Icon(Icons.calendar_today_outlined),
-                        label: Text(ambiguousDate
-                            ? 'Choose which diary date'
-                            : 'Diary date: ${_date.toIso()}'))
-                  else
-                    Text('Diary date: ${_date.toIso()}'),
+                  TextButton.icon(
+                      style: isNew
+                          ? null
+                          : TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                            ),
+                      onPressed: _busy || _conflict ? null : _pickDate,
+                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                      label: Text(isNew && ambiguousDate
+                          ? 'Choose which diary date'
+                          : 'Diary date: ${_date.toIso()}')),
                   TextField(
                     controller: _caption,
                     enabled: !_busy,
@@ -916,10 +1122,56 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
                       child: const Text('Preview correction with AI'),
                     ),
                     const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _busy || _conflict
+                              ? null
+                              : () => _pickMealPhoto(ImageSource.camera),
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          label: const Text('Camera'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _busy || _conflict
+                              ? null
+                              : () => _pickMealPhoto(ImageSource.gallery),
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Gallery'),
+                        ),
+                        if (_photoPath != null)
+                          TextButton(
+                            onPressed: _busy || _conflict
+                                ? null
+                                : () => setState(() {
+                                      _photoPath = null;
+                                      _saveRequestId = null;
+                                    }),
+                            child: const Text('Remove photo'),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     FilledButton(
                       onPressed: _busy || _conflict ? null : _saveChanges,
                       child: const Text('Save changes'),
                     ),
+                    if (widget.editor.mutations != null) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: _busy || _conflict ? null : _deleteMeal,
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        label: Text(
+                          'Delete meal',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),

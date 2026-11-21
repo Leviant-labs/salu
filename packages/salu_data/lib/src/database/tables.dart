@@ -159,3 +159,23 @@ class CatalogBarcodes extends Table {
   @override
   Set<Column<Object>> get primaryKey => {dataset, code};
 }
+
+/// Durable, idempotent mutation journal for photo-meal revisions, moves,
+/// deletes, and undos.
+@TableIndex(name: 'meal_mutations_meal_id', columns: {#mealId})
+@DataClassName('MealMutationRow')
+class MealMutations extends Table {
+  TextColumn get requestId => text()();
+  TextColumn get mealId => text()();
+  TextColumn get operation => text()();
+  IntColumn get expectedRevision => integer()();
+  IntColumn get resultingRevision => integer()();
+  TextColumn get beforeJson => text().nullable()();
+  TextColumn get afterJson => text().nullable()();
+  IntColumn get createdAtMs => integer()();
+  IntColumn get undoExpiresAtMs => integer().nullable()();
+  TextColumn get payloadDigest => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {requestId};
+}

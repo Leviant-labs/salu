@@ -24,6 +24,7 @@ class TodayScreen extends ConsumerWidget {
       builder: (_) => MealEditor(
         meal: meal,
         repository: ref.read(photoMealRepositoryProvider),
+        mutations: ref.read(mealMutationRepositoryProvider),
         assistant: ref.read(assistantProvider),
         media: ref.read(managedMediaStoreProvider),
         activeEstimates: ref.read(activeMealEstimatesProvider),
@@ -35,6 +36,10 @@ class TodayScreen extends ConsumerWidget {
         library: FoodLibrary(ref.read(documentStoreProvider)),
         onLogged: (date) => ref.read(diarySelectionProvider.notifier).state =
             date == today ? null : date,
+        onMutated: (_, __) {
+          ref.invalidate(todayMealsProvider);
+          ref.invalidate(todayEntriesProvider);
+        },
         newId: ref.read(idGeneratorProvider).next,
       ),
     ));

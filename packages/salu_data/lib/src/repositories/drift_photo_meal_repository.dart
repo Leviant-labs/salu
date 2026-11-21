@@ -80,9 +80,11 @@ final class DriftPhotoMealRepository implements LivePhotoMealRepository {
           ..where((t) =>
               t.id.equals(meal.id) & t.revision.equals(expectedRevision)))
         .write(PhotoMealsCompanion(
+      diaryDate: Value(meal.date.toIso()),
       slot: Value(meal.slot.name),
       caption: Value(meal.caption),
       revision: Value(expectedRevision + 1),
+      photoPath: Value(meal.photoPath),
       estimateStatus: Value(meal.estimateStatus.name),
       itemsJson: Value(_encodeItems(meal.items)),
     ));

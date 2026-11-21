@@ -101,20 +101,23 @@ final class PhotoMeal {
   final List<PhotoMealItem> items;
 
   PhotoMeal copyWith({
+    DiaryDate? date,
     MealSlot? slot,
     String? caption,
     List<PhotoMealItem>? items,
     int? revision,
+    String? photoPath,
+    bool clearPhoto = false,
     MealEstimateStatus? estimateStatus,
   }) =>
       PhotoMeal(
         id: id,
-        date: date,
+        date: date ?? this.date,
         slot: slot ?? this.slot,
         caption: caption ?? this.caption,
         createdAt: createdAt,
         revision: revision ?? this.revision,
-        photoPath: photoPath,
+        photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
         estimateStatus: estimateStatus ?? this.estimateStatus,
         recordedOffsetMinutes: recordedOffsetMinutes,
         items: items ?? this.items,
