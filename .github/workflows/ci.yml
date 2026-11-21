@@ -109,3 +109,87 @@ jobs:
         run: |
           flutter pub get --enforce-lockfile
           flutter build ios --release --no-codesign
+
+  android-emulator-smoke:
+    name: android emulator offline smoke
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: tool/flutter-version.txt
+          cache: true
+
+      - name: Install sqlite3
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Resolve locked packages and generate Drift code
+        run: |
+          (cd packages/salu_core && dart pub get --enforce-lockfile)
+          (cd packages/salu_data && dart pub get --enforce-lockfile && dart run build_runner build)
+          (cd app && flutter pub get --enforce-lockfile)
+
+      - name: Bootstrap and verify generated native hosts
+        run: |
+          bash app/tool/bootstrap_platforms.sh
+          dart tool/verify_platforms.dart app
+
+      - name: Configure KVM access if present
+        run: |
+          if [[ -e /dev/kvm ]]; then
+            sudo chmod 666 /dev/kvm
+          fi
+
+      - name: Run offline diary smoke test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            mkdir -p artifacts/emulator-smoke
+            flutter devices --machine > artifacts/emulator-smoke/flutter-devices.json
+            device_id="$(python3 -c '
+            import json, sys
+            devices = json.load(sys.stdin)
+            for d in devices:
+                if str(d.get("id", "")).startswith("emulator-"):
+                    print(d["id"])
+                    break
+            ' < artifacts/emulator-smoke/flutter-devices.json)"
+            if [[ -z "$device_id" ]]; then
+              echo "No Android emulator device discovered by flutter devices" >&2
+              flutter devices >&2
+              exit 1
+            fi
+            echo "Running offline smoke test on $device_id"
+            trap 'adb -s "$device_id" logcat -d -s flutter:I AndroidRuntime:E TestRunner:I > artifacts/emulator-smoke/device-logcat.txt 2>/dev/null || true' EXIT
+            (cd app && flutter test --no-pub integration_test/offline_diary_test.dart -d "$device_id") 2>&1 | tee artifacts/emulator-smoke/test-output.log
+
+      - name: Run repo check after device smoke
+        run: bash tool/check.sh
+
+      - name: Archive private emulator diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-smoke-diagnostics
+          path: artifacts/emulator-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
