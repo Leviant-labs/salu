@@ -1,5 +1,7 @@
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
+import 'package:salu_data/salu_data.dart' as salu_data
+    show decodeRecipe, encodeRecipe;
 
 /// App-authored recipes on top of versioned edible-food reference records.
 /// Where an ingredient is cooked, the shopping amount is for the ready-cooked
@@ -10,11 +12,12 @@ class RecipeLibrary {
   final LocalDocumentStore documents;
 
   static const _key = 'recipe-library';
+  static const int currentVersion = 1;
 
   Future<List<RecipeVersion>> load() async {
     final local = await documents.read(_key);
-    final user = (local?.data['recipes'] as List? ?? const [])
-        .map((raw) => decodeRecipe(raw as Map<String, dynamic>));
+    final user =
+        local == null ? const <RecipeVersion>[] : await _readAndMigrate(local);
     final ids = _recipes
         .expand(
             (recipe) => recipe.ingredients.map((ingredient) => ingredient.$1))
@@ -47,83 +50,75 @@ class RecipeLibrary {
     ];
   }
 
+  Future<List<RecipeVersion>> _readAndMigrate(LocalRecord local) async {
+    final decoded = _decodeUserRecipes(local.data);
+    final rawRows = local.data['recipes'] as List? ?? const [];
+    final isCurrent = isCurrentDocumentVersion(
+      local.data,
+      currentVersion,
+      documentName: _key,
+    );
+    final needsItemMigration = rawRows.any(
+      (raw) => raw is Map && raw['versionFormat'] != recipeFormatVersion,
+    );
+    if (!isCurrent || needsItemMigration) {
+      final migrated = <String, Object?>{
+        ...local.data,
+        'version': currentVersion,
+        'recipes': [
+          for (final recipe in decoded) encodeRecipe(recipe),
+        ],
+      };
+      if (!await documents.put(_key, local.revision, migrated)) {
+        final latest = await documents.read(_key);
+        if (latest != null) return _decodeUserRecipes(latest.data);
+      }
+    }
+    return decoded;
+  }
+
+  List<RecipeVersion> _decodeUserRecipes(Map<String, dynamic> data) {
+    isCurrentDocumentVersion(data, currentVersion, documentName: _key);
+    final rawRecipes = data['recipes'];
+    if (rawRecipes == null) return const [];
+    if (rawRecipes is! List) {
+      throw FormatException('Invalid recipes list in $_key', rawRecipes);
+    }
+    return [
+      for (final raw in rawRecipes)
+        if (raw is Map)
+          decodeRecipe(Map<String, dynamic>.from(raw))
+        else
+          throw FormatException('Invalid recipe entry in $_key', raw),
+    ];
+  }
+
   Future<void> add(RecipeVersion recipe) async {
     final previous = await documents.read(_key);
-    final rows = previous?.data['recipes'] as List? ?? const [];
-    if (rows.any((row) =>
-        row is Map &&
-        row['id'] == recipe.id &&
-        row['version'] == recipe.version)) {
+    final existing = previous == null
+        ? const <RecipeVersion>[]
+        : _decodeUserRecipes(previous.data);
+    if (existing
+        .any((row) => row.id == recipe.id && row.version == recipe.version)) {
       throw StateError('This recipe version already exists');
     }
     if (!await documents.put(_key, previous?.revision ?? 0, {
-      'recipes': [...rows, encodeRecipe(recipe)]
+      ...?previous?.data,
+      'version': currentVersion,
+      'recipes': [
+        for (final row in existing) encodeRecipe(row),
+        encodeRecipe(recipe),
+      ],
     })) {
       throw StateError('The recipe library changed. Try again.');
     }
   }
 
-  static Map<String, Object?> encodeRecipe(RecipeVersion recipe) => {
-        'id': recipe.id,
-        'name': recipe.name,
-        'version': recipe.version,
-        'prepMinutes': recipe.prepMinutes,
-        'servings': recipe.servings,
-        'finishedGrams': recipe.finishedGrams,
-        'method': recipe.method,
-        if (recipe.allergens != null) 'allergens': recipe.allergens!.toList(),
-        if (recipe.allergenSource != null)
-          'allergenSource': recipe.allergenSource,
-        'ingredients': [
-          for (final i in recipe.ingredients)
-            {
-              'id': i.food.id,
-              'name': i.food.name,
-              'nutrients': i.food.per100g.toJson(),
-              'source': i.food.source.dataset,
-              'sourceId': i.food.source.datasetId,
-              'sourceVersion': i.food.source.datasetVersion,
-              'preparation': i.food.preparation.name,
-              'edibleGrams': i.edibleGrams,
-              'purchaseName': i.purchaseName,
-              'purchaseGrams': i.purchaseGrams,
-            }
-        ],
-      };
+  static Map<String, Object?> encodeRecipe(RecipeVersion recipe) =>
+      salu_data.encodeRecipe(recipe);
 
-  static RecipeVersion decodeRecipe(Map<String, dynamic> row) => RecipeVersion(
-        id: row['id'] as String,
-        name: row['name'] as String,
-        version: row['version'] as int,
-        prepMinutes: row['prepMinutes'] as int,
-        servings: (row['servings'] as num).toDouble(),
-        finishedGrams: (row['finishedGrams'] as num?)?.toDouble(),
-        method: row['method'] as String,
-        allergens: (row['allergens'] as List?)?.cast<String>().toSet(),
-        allergenSource: row['allergenSource'] as String?,
-        ingredients: [
-          for (final raw in row['ingredients'] as List)
-            _ingredient(raw as Map<String, dynamic>)
-        ],
-      );
-
-  static RecipeIngredient _ingredient(Map<String, dynamic> row) =>
-      RecipeIngredient(
-        food: Food(
-            id: row['id'] as String,
-            name: row['name'] as String,
-            per100g: NutrientProfile.fromJson(
-                row['nutrients'] as Map<String, dynamic>),
-            preparation:
-                Preparation.values.byName(row['preparation'] as String),
-            source: FoodSource(
-                dataset: row['source'] as String,
-                datasetId: row['sourceId'] as String,
-                datasetVersion: row['sourceVersion'] as String?)),
-        edibleGrams: (row['edibleGrams'] as num).toDouble(),
-        purchaseName: row['purchaseName'] as String,
-        purchaseGrams: (row['purchaseGrams'] as num?)?.toDouble(),
-      );
+  static RecipeVersion decodeRecipe(Map<String, dynamic> row) =>
+      salu_data.decodeRecipe(row);
 }
 
 const _starterAllergenProvenance =

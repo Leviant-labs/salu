@@ -15,11 +15,18 @@ class FoodPreferences {
 
   factory FoodPreferences.fromJson(Map<String, dynamic> json) =>
       FoodPreferences(
-        likes: json['likes'] as String? ?? '',
-        dislikes: json['dislikes'] as String? ?? '',
-        exclusions: json['exclusions'] as String? ?? '',
-        strictAllergens: json['strictAllergens'] as String? ?? '',
+        likes: _readOptionalString(json, 'likes'),
+        dislikes: _readOptionalString(json, 'dislikes'),
+        exclusions: _readOptionalString(json, 'exclusions'),
+        strictAllergens: _readOptionalString(json, 'strictAllergens'),
       );
+
+  static String _readOptionalString(Map<String, dynamic> json, String key) {
+    final raw = json[key];
+    if (raw == null) return '';
+    if (raw is String) return raw;
+    throw FormatException('Expected string for preferences.$key', raw);
+  }
 
   final String likes;
   final String dislikes;
@@ -75,7 +82,15 @@ class PlanningProfile {
     this.onboarded = false,
   });
 
+  static const int currentVersion = 1;
+
   factory PlanningProfile.fromJson(Map<String, dynamic> json) {
+    if (json.containsKey('version') && json['version'] != currentVersion) {
+      throw FormatException(
+        'Unsupported planning profile version: ${json['version']}',
+        json['version'],
+      );
+    }
     final rawPrefs = json['preferences'];
     final prefsMap = switch (rawPrefs) {
       null => const <String, dynamic>{},
@@ -83,20 +98,58 @@ class PlanningProfile {
       Map() => Map<String, dynamic>.from(rawPrefs),
       _ => throw FormatException('Expected map for preferences', rawPrefs),
     };
+    final rawWeightUnit = json['weightUnit'];
+    final weightUnit = switch (rawWeightUnit) {
+      null => WeightUnit.kilograms,
+      String() => _parseWeightUnit(rawWeightUnit),
+      _ => throw FormatException(
+          'Expected string for weightUnit',
+          rawWeightUnit,
+        ),
+    };
+    final energyGoal = switch (json['energyGoal']) {
+      null => '',
+      final String value => value,
+      final other => throw FormatException(
+          'Expected string for energyGoal',
+          other,
+        ),
+    };
+    final habitualActivity = switch (json['habitualActivity']) {
+      null => '',
+      final String value => value,
+      final other => throw FormatException(
+          'Expected string for habitualActivity',
+          other,
+        ),
+    };
+    final onboarded = switch (json['onboarded']) {
+      null => json['startingWeight'] != null,
+      final bool value => value,
+      final other => throw FormatException(
+          'Expected bool for onboarded',
+          other,
+        ),
+    };
     return PlanningProfile(
       startingWeight: _readOptionalDouble(json, 'startingWeight'),
-      weightUnit: WeightUnit.values.byName(
-        json['weightUnit'] as String? ?? WeightUnit.kilograms.name,
-      ),
-      energyGoal: json['energyGoal'] as String? ?? '',
+      weightUnit: weightUnit,
+      energyGoal: energyGoal,
       dailyEnergyKcal: _readOptionalDouble(json, 'dailyEnergyKcal'),
       proteinGrams: _readOptionalDouble(json, 'proteinGrams'),
       carbohydrateGrams: _readOptionalDouble(json, 'carbohydrateGrams'),
       fatGrams: _readOptionalDouble(json, 'fatGrams'),
-      habitualActivity: json['habitualActivity'] as String? ?? '',
+      habitualActivity: habitualActivity,
       preferences: FoodPreferences.fromJson(prefsMap),
-      onboarded: json['onboarded'] as bool? ?? json['startingWeight'] != null,
+      onboarded: onboarded,
     );
+  }
+
+  static WeightUnit _parseWeightUnit(String name) {
+    for (final unit in WeightUnit.values) {
+      if (unit.name == name) return unit;
+    }
+    throw FormatException('Invalid weightUnit: $name', name);
   }
 
   final double? startingWeight;
@@ -150,6 +203,7 @@ class PlanningProfile {
       };
 
   Map<String, Object?> toJson() => {
+        'version': currentVersion,
         'startingWeight': startingWeight,
         'weightUnit': weightUnit.name,
         'energyGoal': energyGoal,

@@ -42,25 +42,47 @@ class PlanningProfileStore {
       return PlanningProfile.fromJson(await _file.read() ?? const {});
     }
     final stored = await docs.read(_key);
-    if (stored != null) return PlanningProfile.fromJson(stored.data);
+    if (stored != null) {
+      final profile = PlanningProfile.fromJson(stored.data);
+      if (!stored.data.containsKey('version')) {
+        final migrated = <String, Object?>{
+          ...stored.data,
+          'version': PlanningProfile.currentVersion,
+        };
+        if (!await docs.put(_key, stored.revision, migrated)) {
+          final latest = await docs.read(_key);
+          if (latest != null) return PlanningProfile.fromJson(latest.data);
+        }
+      }
+      return profile;
+    }
     final legacy = await _file.read();
     if (legacy == null) return const PlanningProfile();
     final profile = PlanningProfile.fromJson(legacy);
-    if (await docs.put(_key, 0, profile.toJson())) return profile;
+    if (await docs.put(_key, 0, {...legacy, ...profile.toJson()})) {
+      return profile;
+    }
     return PlanningProfile.fromJson((await docs.read(_key))!.data);
   }
 
-  Future<void> save(PlanningProfile profile) =>
-      _update((_) => profile.toJson());
+  Future<void> save(PlanningProfile profile) {
+    profile.validate();
+    return _update((saved) => {
+          ...?saved,
+          ...profile.toJson(),
+        });
+  }
 
   Future<void> savePreferences(FoodPreferences preferences) => _update(
         (saved) => {
+          ...?saved,
           ...PlanningProfile.fromJson(saved ?? const {}).toJson(),
           'preferences': preferences.toJson(),
         },
       );
 
   Future<void> skipOnboarding() => _update((saved) => {
+        ...?saved,
         ...PlanningProfile.fromJson(saved ?? const {}).toJson(),
         'onboarded': true,
       });
@@ -71,6 +93,9 @@ class PlanningProfileStore {
     if (docs == null) return _file.update(change);
     await load();
     final old = await docs.read(_key);
+    if (old != null) {
+      PlanningProfile.fromJson(old.data);
+    }
     if (!await docs.put(_key, old?.revision ?? 0, change(old?.data))) {
       throw StateError('The profile changed while saving');
     }

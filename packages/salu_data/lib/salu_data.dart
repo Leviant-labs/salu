@@ -5,6 +5,7 @@
 library;
 
 export 'src/codec.dart';
+export 'src/codec/recipe_codec.dart';
 export 'src/catalogue/catalogue_pack.dart';
 export 'src/database/app_database.dart';
 export 'src/catalogue/bundled_catalogue.dart'
