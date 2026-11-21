@@ -149,7 +149,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                       TextButton(
                           onPressed: () => Navigator.pop(context),
                           child: const Text('Done'))
-                     ]));
+                    ]));
       }
     } catch (_) {
       if (mounted) {
