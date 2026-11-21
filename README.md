@@ -25,16 +25,30 @@ fails the build if that is violated.
 
 ## Run it
 
+Salu pins Flutter to the version in [`tool/flutter-version.txt`](tool/flutter-version.txt) (`3.44.0`).
+
+On Windows, add the pinned Flutter SDK `bin` directory to `PATH` before running checks (for example in PowerShell, and ensure Git for Windows is installed so `tool/check_boundaries.sh` runs under Git Bash):
+
+```powershell
+$env:PATH = "<path-to-flutter>\bin;$env:PATH"
+```
+
+Run the full repo check suite from the repository root:
+
+```powershell
+pwsh -File tool/check.ps1
+```
+
+On macOS/Linux (or Git Bash with Flutter on `PATH`):
+
 ```bash
-# 1. codegen: drift tables -> app_database.g.dart (not committed)
-(cd packages/salu_data && dart pub get && dart run build_runner build)
+bash tool/check.sh
+```
 
-# 2. packages
-(cd packages/salu_core && dart pub get && dart analyze && dart test)
-(cd packages/salu_data && dart analyze && dart test)
+To generate native platform folders (`android/`, `ios/`, not committed) before running the app on a device or emulator:
 
-# 3. app: platform folders (android/, ios/) are generated, not committed
-(cd app && bash tool/bootstrap_platforms.sh && flutter pub get && flutter analyze && flutter test)
+```bash
+(cd app && bash tool/bootstrap_platforms.sh && flutter pub get && flutter run)
 ```
 
 `packages/salu_data` needs a sqlite3 shared library on the host

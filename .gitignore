@@ -13,10 +13,6 @@ coverage/
 #   cd packages/salu_data && dart run build_runner build
 **/*.g.dart
 
-# Lock files are regenerated per machine while the dependency ranges settle.
-# Flip this once versions are pinned for a release branch.
-pubspec.lock
-
 # Local secrets and provider credentials
 *.env
 *.env.*
