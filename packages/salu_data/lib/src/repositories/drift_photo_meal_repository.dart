@@ -96,6 +96,10 @@ final class DriftPhotoMealRepository implements LivePhotoMealRepository {
             'nutrients': item.nutrients.toJson(),
             'source': item.source,
             'labelPaths': item.labelPaths,
+            if (item.reviewIssues.isNotEmpty)
+              'reviewIssues': [
+                for (final issue in item.reviewIssues) issue.toJson(),
+              ],
           },
       ]);
 
@@ -115,6 +119,21 @@ final class DriftPhotoMealRepository implements LivePhotoMealRepository {
       labelPath: row['labelPath'] as String?,
       labelPaths: (row['labelPaths'] as List?)?.cast<String>() ?? const [],
       source: row['source'] as String?,
+      reviewIssues: _decodeIssues(row['reviewIssues']),
     );
+  }
+
+  List<NutritionIssue> _decodeIssues(Object? raw) {
+    if (raw is! List) return const [];
+    final issues = <NutritionIssue>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      try {
+        issues.add(NutritionIssue.fromJson(entry.cast<String, Object?>()));
+      } on FormatException {
+        // Ignore malformed legacy or future entries rather than failing reads.
+      }
+    }
+    return issues;
   }
 }

@@ -136,6 +136,7 @@ PhotoMealItem reviseMealItem(
     nutrients: nutrients,
     labelPaths: original.labelPaths,
     source: nutrients?.hasAnyKnownValue == true ? original.source : null,
+    reviewIssues: nutrients != null ? original.reviewIssues : const [],
   );
 }
 
@@ -212,4 +213,24 @@ String mealTotalDetails(List<PhotoMealItem> items) {
     totals.add('Other nutrients unknown');
   }
   return totals.join(' · ');
+}
+
+String mealNutritionIssueText(NutritionIssue issue) {
+  final nutrient = issue.nutrient;
+  return switch (issue.code) {
+    'invalidValue' => nutrient != null
+        ? '${nutrient.label} had an invalid value and was left unknown.'
+        : 'An invalid nutrition value was left unknown.',
+    'absoluteLimit' => nutrient != null
+        ? '${nutrient.label} exceeded plausibility limits and was left unknown. Review or enter manually.'
+        : 'A value exceeded plausibility limits and was left unknown.',
+    'massInconsistent' => nutrient != null
+        ? '${nutrient.label} exceeded the portion weight and was left unknown. Review or enter manually.'
+        : 'A value exceeded the portion weight and was left unknown.',
+    'macroEnergyMismatch' =>
+      'Reported energy differs substantially from protein, carbs, fat, and fibre. Review before relying on it.',
+    _ => nutrient != null
+        ? '${nutrient.label} needs review (${issue.code}).'
+        : 'Nutrition needs review (${issue.code}).',
+  };
 }

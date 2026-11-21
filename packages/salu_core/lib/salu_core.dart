@@ -13,6 +13,7 @@ export 'src/domain/entry.dart';
 export 'src/domain/check_in.dart';
 export 'src/domain/food.dart';
 export 'src/domain/nutrients.dart';
+export 'src/domain/nutrition_screening.dart';
 export 'src/domain/onboarding_draft.dart';
 export 'src/domain/photo_meal.dart';
 export 'src/domain/planning_profile.dart';

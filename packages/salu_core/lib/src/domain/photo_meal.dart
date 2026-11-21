@@ -1,4 +1,5 @@
 import 'nutrients.dart';
+import 'nutrition_screening.dart';
 import 'time.dart';
 
 enum MealSlot { breakfast, lunch, dinner, snack }
@@ -29,10 +30,12 @@ final class PhotoMealItem {
     List<String> labelPaths = const [],
     this.id,
     this.source,
+    List<NutritionIssue> reviewIssues = const [],
   })  : name = name.trim(),
         labelPaths = List.unmodifiable(
             {...labelPaths, if (labelPath != null) labelPath}),
-        nutrients = nutrients ?? const NutrientProfile.empty() {
+        nutrients = nutrients ?? const NutrientProfile.empty(),
+        reviewIssues = List.unmodifiable(reviewIssues) {
     if (this.name.isEmpty) throw ArgumentError('A food name is required');
   }
 
@@ -43,6 +46,7 @@ final class PhotoMealItem {
   final List<String> labelPaths;
   String? get labelPath => labelPaths.lastOrNull;
   final String? source;
+  final List<NutritionIssue> reviewIssues;
 
   PhotoMealItem copyWith({
     String? name,
@@ -51,6 +55,7 @@ final class PhotoMealItem {
     NutrientProfile? nutrients,
     String? labelPath,
     String? source,
+    List<NutritionIssue>? reviewIssues,
   }) =>
       PhotoMealItem(
         name: name ?? this.name,
@@ -60,6 +65,7 @@ final class PhotoMealItem {
         labelPaths: labelPaths,
         labelPath: labelPath,
         source: source ?? this.source,
+        reviewIssues: reviewIssues ?? this.reviewIssues,
       );
 }
 

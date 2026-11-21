@@ -190,7 +190,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                       name: item.name,
                                       portion: item.portion,
                                       nutrients: item.nutrients,
-                                      source: item.source))
+                                      source: item.source,
+                                      reviewIssues: item.reviewIssues))
                                   .toList())),
                       child: Text(
                           '${meal.date.toIso()} · ${meal.items.map((item) => item.name).join(', ')}')),

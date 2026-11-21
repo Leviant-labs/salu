@@ -43,6 +43,7 @@ class FoodLibrary {
             items: [
               for (final i in raw['items'] as List)
                 PhotoMealItem(
+                    id: i['id'] as String?,
                     name: i['name'] as String,
                     portion: i['amount'] == null
                         ? null
@@ -50,7 +51,16 @@ class FoodLibrary {
                             MealUnit.values.byName(i['unit'] as String)),
                     nutrients: NutrientProfile.fromJson(
                         i['nutrients'] as Map<String, dynamic>),
-                    source: i['source'] as String?),
+                    labelPaths:
+                        (i['labelPaths'] as List?)?.cast<String>() ?? const [],
+                    source: i['source'] as String?,
+                    reviewIssues: [
+                      for (final issue
+                          in (i['reviewIssues'] as List? ?? const []))
+                        if (issue is Map)
+                          NutritionIssue.fromJson(
+                              issue.cast<String, Object?>()),
+                    ]),
             ]
           ),
       ];
@@ -102,11 +112,17 @@ class FoodLibrary {
             'items': [
               for (final item in meal.items)
                 {
+                  if (item.id != null) 'id': item.id,
                   'name': item.name,
                   'amount': item.portion?.amount,
                   'unit': item.portion?.unit.name,
                   'source': item.source,
+                  if (item.labelPaths.isNotEmpty) 'labelPaths': item.labelPaths,
                   'nutrients': item.nutrients.toJson(),
+                  if (item.reviewIssues.isNotEmpty)
+                    'reviewIssues': [
+                      for (final issue in item.reviewIssues) issue.toJson(),
+                    ],
                 }
             ]
           },
@@ -154,11 +170,16 @@ Future<PhotoMealItem?> pickSavedFoodPortion(
           ));
   if (result == null) return null;
   final portion = MealPortion(result, basis.unit);
+  final nutrients = food.nutrition.forPortion(portion);
+  final reviewIssues = nutrients == null
+      ? const <NutritionIssue>[]
+      : screenNutrition(nutrients, portion: portion).issues;
   return PhotoMealItem(
       name: food.name,
       portion: portion,
-      nutrients: food.nutrition.forPortion(portion),
-      source: 'saved-food:${food.id}');
+      nutrients: nutrients,
+      source: 'saved-food:${food.id}',
+      reviewIssues: reviewIssues);
 }
 
 Future<SavedFood?> editSavedFood(BuildContext context, String id,

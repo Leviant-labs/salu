@@ -55,6 +55,54 @@ void main() {
     final updated = (await store.listFor(_date)).single;
     expect(updated.items.single.id, meal.items.single.id);
     expect(updated.items.single.labelPaths, ['/label', '/other']);
+    expect(updated.items.single.reviewIssues, isEmpty);
+  });
+
+  test('round trips item reviewIssues and defaults missing key to empty',
+      () async {
+    final db = AppDatabase.memory();
+    addTearDown(db.close);
+    final store = DriftPhotoMealRepository(db);
+    const issues = [
+      NutritionIssue(
+        code: 'absoluteLimit',
+        nutrient: NutrientKey.energyKcal,
+        blocksAutomaticUse: true,
+      ),
+      NutritionIssue(
+        code: 'macroEnergyMismatch',
+        nutrient: NutrientKey.energyKcal,
+        blocksAutomaticUse: false,
+      ),
+    ];
+    final meal = PhotoMeal(
+      id: 'reviewed-1',
+      date: _date,
+      slot: MealSlot.dinner,
+      caption: 'Flagged dinner',
+      createdAt: DateTime.utc(2026, 11, 18, 19),
+      items: [
+        PhotoMealItem(
+          name: 'Soup',
+          portion: MealPortion(250, MealUnit.grams),
+          nutrients: NutrientProfile({
+            NutrientKey.proteinG:
+                NutrientEstimated(12, basis: 'ai-meal-estimate'),
+          }),
+          source: 'ai-meal-estimate',
+          reviewIssues: issues,
+        ),
+        PhotoMealItem(name: 'Bread'),
+      ],
+    );
+
+    expect(await store.saveNew(meal), isTrue);
+    final loaded = (await store.listFor(_date)).single;
+    expect(loaded.items.first.reviewIssues, issues);
+    expect(loaded.items.first.nutrients[NutrientKey.energyKcal],
+        const NutrientUnknown());
+    expect(loaded.items.first.nutrients[NutrientKey.proteinG].numericValue, 12);
+    expect(loaded.items.last.reviewIssues, isEmpty);
   });
 
   test(

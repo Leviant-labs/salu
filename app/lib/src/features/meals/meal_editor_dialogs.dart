@@ -165,6 +165,7 @@ class _MealLabelFormState extends State<_MealLabelForm> {
   String? _error;
   bool _reading = false;
   bool _transcribed = false;
+  List<NutritionIssue> _issues = const [];
 
   @override
   void initState() {
@@ -181,12 +182,14 @@ class _MealLabelFormState extends State<_MealLabelForm> {
     }
     _unit = label.basis.unit;
     _transcribed = true;
+    _issues = label.issues;
   }
 
   Future<void> _readLabel() async {
     setState(() {
       _reading = true;
       _error = null;
+      _issues = const [];
     });
     try {
       final result = await widget.readLabel();
@@ -247,12 +250,16 @@ class _MealLabelFormState extends State<_MealLabelForm> {
       );
       return;
     }
+    final merged = NutrientProfile(
+      {...widget.item.nutrients.values, ...scaled.values},
+    );
+    final screened = screenNutrition(merged, portion: widget.item.portion);
     Navigator.of(context).pop(
       widget.item.copyWith(
         labelPath: widget.labelPath,
-        nutrients: NutrientProfile(
-            {...widget.item.nutrients.values, ...scaled.values}),
+        nutrients: merged,
         source: 'nutrition-label',
+        reviewIssues: screened.issues,
       ),
     );
   }
@@ -298,6 +305,29 @@ class _MealLabelFormState extends State<_MealLabelForm> {
               if (_transcribed)
                 const Text(
                     'Check every proposed value against the label before applying.'),
+              if (_issues.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Review warnings',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                      ),
+                      for (final issue in _issues)
+                        Text(
+                          mealNutritionIssueText(issue),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                        ),
+                    ],
+                  ),
+                ),
               const Text(
                 'Enter the printed basis in the same unit as the amount eaten. Reviewed values replace only the matching nutrients; other recorded values are unchanged.',
               ),

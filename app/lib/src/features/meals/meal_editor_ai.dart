@@ -34,7 +34,8 @@ the basis is ambiguous or not visible, use null for basis and {} for nutrients.
 
 typedef LabelTranscription = ({
   MealPortion basis,
-  Map<NutrientKey, double> values
+  Map<NutrientKey, double> values,
+  List<NutritionIssue> issues,
 });
 
 String? labelProductName(Map<String, dynamic> response) {
@@ -67,14 +68,23 @@ LabelTranscription? parseMealLabel(Map<String, dynamic> response) {
   final basis = _portion(response['basis']);
   final raw = response['nutrients'];
   if (basis == null || raw is! Map<String, Object?>) return null;
-  final values = <NutrientKey, double>{};
-  for (final key in NutrientKey.values) {
-    final value = raw[key.wire];
-    if (value is num && value.isFinite && value >= 0 && value <= 1000000) {
-      values[key] = value.toDouble();
-    }
-  }
-  return values.isEmpty ? null : (basis: basis, values: values);
+  final rawMap = <NutrientKey, Object?>{
+    for (final key in NutrientKey.values)
+      if (raw.containsKey(key.wire) && raw[key.wire] != null)
+        key: raw[key.wire],
+  };
+  final screened = screenRawNutrition(
+    rawMap,
+    build: NutrientReported.new,
+    portion: basis,
+  );
+  final values = <NutrientKey, double>{
+    for (final key in NutrientKey.values)
+      if (screened.profile[key].isKnown)
+        key: screened.profile[key].numericValue!,
+  };
+  if (values.isEmpty && screened.issues.isEmpty) return null;
+  return (basis: basis, values: values, issues: screened.issues);
 }
 
 const String defaultMealEstimateProvenance = 'ai-meal-estimate';
@@ -103,23 +113,29 @@ PhotoMealItem _estimatedItem(
   final name = _name(row['name']);
   final portion = _portion(row['portion']);
   final raw = row['nutrients'];
-  final values = <NutrientKey, NutrientValue>{};
-  if (portion != null && raw is Map<String, Object?>) {
-    for (final key in NutrientKey.values) {
-      final value = raw[key.wire];
-      if (value is num && value.isFinite && value >= 0 && value <= 1000000) {
-        values[key] = NutrientEstimated(
-          value.toDouble(),
-          basis: provenance,
-        );
-      }
-    }
+  if (portion == null || raw is! Map<String, Object?>) {
+    return PhotoMealItem(
+      name: name,
+      portion: portion,
+      source: provenance,
+    );
   }
+  final rawMap = <NutrientKey, Object?>{
+    for (final key in NutrientKey.values)
+      if (raw.containsKey(key.wire) && raw[key.wire] != null)
+        key: raw[key.wire],
+  };
+  final screened = screenRawNutrition(
+    rawMap,
+    build: (value) => NutrientEstimated(value, basis: provenance),
+    portion: portion,
+  );
   return PhotoMealItem(
     name: name,
     portion: portion,
-    nutrients: NutrientProfile(values),
+    nutrients: screened.profile,
     source: provenance,
+    reviewIssues: screened.issues,
   );
 }
 

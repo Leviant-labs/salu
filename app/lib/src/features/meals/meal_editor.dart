@@ -857,6 +857,34 @@ class _MealEditorRouteState extends State<_MealEditorRoute> {
             if (item.source == 'nutrition-label')
               const Text('Nutrition label values'),
             if (item.labelPath != null) const Text('Label photo attached'),
+            if (item.reviewIssues.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  Text(
+                    'Needs review',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                  ),
+                ],
+              ),
+              for (final issue in item.reviewIssues)
+                Text(
+                  mealNutritionIssueText(issue),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                ),
+            ],
             Wrap(
               children: [
                 TextButton(
