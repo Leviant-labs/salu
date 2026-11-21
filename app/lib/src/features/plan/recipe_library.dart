@@ -16,15 +16,11 @@ class RecipeLibrary {
   static const int currentVersion = RecipeLibraryRepository.currentVersion;
 
   RecipeLibraryRepository get _repository =>
-      RecipeLibraryRepository(foods, documents);
+      RecipeLibraryRepository(foods, documents, runWrite: gate?.runWrite);
 
-  Future<T> _runWrite<T>(Future<T> Function() work) =>
-      gate != null ? gate!.runWrite(work) : work();
+  Future<List<RecipeVersion>> load() => _repository.load();
 
-  Future<List<RecipeVersion>> load() => _runWrite(() => _repository.load());
-
-  Future<void> add(RecipeVersion recipe) =>
-      _runWrite(() => _repository.add(recipe));
+  Future<void> add(RecipeVersion recipe) => _repository.add(recipe);
 
   static Map<String, Object?> encodeRecipe(RecipeVersion recipe) =>
       salu_data.encodeRecipe(recipe);

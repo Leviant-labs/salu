@@ -5,7 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:salu/src/data_transfer/data_write_gate.dart';
 import 'package:salu/src/features/onboarding/planning_profile.dart';
 import 'package:salu/src/features/plan/plan_controller.dart';
+import 'package:salu/src/features/plan/recipe_library.dart';
 import 'package:salu/src/features/plan/week_plan.dart';
+import 'package:salu/src/features/search/food_library.dart';
+import 'package:salu_core/salu_core.dart'
+    show
+        BoundedNutrition,
+        MealPortion,
+        MealUnit,
+        NutrientKey,
+        NutrientProfile,
+        NutrientReported;
 import 'package:salu_data/salu_data.dart';
 
 final class _ControlledWeekPlanStore extends WeekPlanStore {
@@ -134,5 +144,64 @@ void main() {
       isTrue,
     );
     expect(controller.plan!.groceries.single.name, 'Bread');
+  });
+
+  test(
+      'already-versioned library and week-plan reads succeed during exclusive gate while writes are blocked',
+      () async {
+    final gate = DataWriteGate();
+    final foodLib = FoodLibrary(docs, gate: gate);
+    final recipeLib = RecipeLibrary(DriftFoodRepository(db), docs, gate: gate);
+    final weekStore = WeekPlanStore(
+      documents: docs,
+      directory: () async => tempDir,
+      gate: gate,
+    );
+
+    // Seed version-1 documents before locking the gate.
+    await foodLib.saveFood((
+      id: 'f1',
+      name: 'Oats',
+      barcode: null,
+      nutrition: BoundedNutrition(
+        MealPortion(100, MealUnit.grams),
+        NutrientProfile({NutrientKey.energyKcal: NutrientReported(380)}),
+      ),
+    ));
+    await weekStore.save(
+      WeekPlan(monday, groceries: const [GroceryItem('Oats', amount: '100 g')]),
+    );
+    // Seed an unversioned legacy week-plan for next week to verify migration writes are gated.
+    final nextMonday = monday.add(const Duration(days: 7));
+    await docs.put(WeekPlanRepository.keyFor(nextMonday), 0, {
+      'meals': const <Object>[],
+      'groceries': const <Object>[],
+    });
+
+    final blocker = Completer<void>();
+    final gateEntered = Completer<void>();
+    final exclusive = gate.exclusive(() async {
+      gateEntered.complete();
+      await blocker.future;
+    });
+    await gateEntered.future;
+
+    // Pure reads on already-versioned docs must succeed while gate is locked.
+    expect(await foodLib.foods(), hasLength(1));
+    expect(await recipeLib.load(), isA<List<Object?>>());
+    expect((await weekStore.load(monday)).groceries.single.name, 'Oats');
+
+    // Writes and legacy migration writes must still be blocked by the gate.
+    await expectLater(
+      foodLib.toggleFavorite('f1'),
+      throwsA(isA<DataWriteBlockedException>()),
+    );
+    await expectLater(
+      weekStore.load(nextMonday),
+      throwsA(isA<DataWriteBlockedException>()),
+    );
+
+    blocker.complete();
+    await exclusive;
   });
 }

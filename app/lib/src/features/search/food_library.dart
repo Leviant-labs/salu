@@ -15,25 +15,20 @@ class FoodLibrary {
   final DataWriteGate? gate;
   static const int currentVersion = FoodLibraryRepository.currentVersion;
 
-  FoodLibraryRepository get _repository => FoodLibraryRepository(documents);
+  FoodLibraryRepository get _repository =>
+      FoodLibraryRepository(documents, runWrite: gate?.runWrite);
 
-  Future<T> _runWrite<T>(Future<T> Function() work) =>
-      gate != null ? gate!.runWrite(work) : work();
+  Future<List<SavedFood>> foods() => _repository.foods();
 
-  Future<List<SavedFood>> foods() => _runWrite(() => _repository.foods());
+  Future<List<SavedMeal>> meals() => _repository.meals();
 
-  Future<List<SavedMeal>> meals() => _runWrite(() => _repository.meals());
+  Future<Set<String>> favorites() => _repository.favorites();
 
-  Future<Set<String>> favorites() => _runWrite(() => _repository.favorites());
+  Future<void> toggleFavorite(String id) => _repository.toggleFavorite(id);
 
-  Future<void> toggleFavorite(String id) =>
-      _runWrite(() => _repository.toggleFavorite(id));
+  Future<void> saveFood(SavedFood food) => _repository.saveFood(food);
 
-  Future<void> saveFood(SavedFood food) =>
-      _runWrite(() => _repository.saveFood(food));
-
-  Future<void> saveMeal(SavedMeal meal) =>
-      _runWrite(() => _repository.saveMeal(meal));
+  Future<void> saveMeal(SavedMeal meal) => _repository.saveMeal(meal);
 }
 
 Future<PhotoMealItem?> pickSavedFoodPortion(

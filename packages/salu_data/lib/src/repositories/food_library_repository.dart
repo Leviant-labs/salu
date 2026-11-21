@@ -20,12 +20,16 @@ typedef SavedMeal = ({
 
 /// Pure-Dart persistence adapter for user-saved foods, meals, and favorites.
 final class FoodLibraryRepository {
-  const FoodLibraryRepository(this.documents);
+  const FoodLibraryRepository(this.documents, {this.runWrite});
 
   final LocalDocumentStore documents;
+  final Future<T> Function<T>(Future<T> Function() work)? runWrite;
 
   static const _key = 'food-library';
   static const int currentVersion = 1;
+
+  Future<T> _write<T>(Future<T> Function() work) =>
+      runWrite != null ? runWrite!(work) : work();
 
   Future<List<SavedFood>> foods() async =>
       (await _loadValidated())?.foods ?? const [];
@@ -101,7 +105,7 @@ final class FoodLibraryRepository {
         ...record.data,
         'version': currentVersion,
       };
-      if (await documents.put(_key, record.revision, migrated)) {
+      if (await _write(() => documents.put(_key, record.revision, migrated))) {
         return (
           revision: record.revision + 1,
           data: Map<String, dynamic>.from(migrated),
@@ -246,11 +250,11 @@ final class FoodLibraryRepository {
   ) async {
     final old = await _loadValidated();
     final base = old?.data ?? const <String, dynamic>{};
-    if (!await documents.put(_key, old?.revision ?? 0, {
-      ...base,
-      ...change(base),
-      'version': currentVersion,
-    })) {
+    if (!await _write(() => documents.put(_key, old?.revision ?? 0, {
+          ...base,
+          ...change(base),
+          'version': currentVersion,
+        }))) {
       throw StateError('Food library changed');
     }
   }

@@ -35,7 +35,9 @@ class WeekPlanStore {
     DataWriteGate? gate,
   })  : _directory = directory,
         _documents = documents,
-        _repository = documents != null ? WeekPlanRepository(documents) : null,
+        _repository = documents != null
+            ? WeekPlanRepository(documents, runWrite: gate?.runWrite)
+            : null,
         _gate = gate;
 
   static final local = WeekPlanStore();
@@ -62,7 +64,7 @@ class WeekPlanStore {
     final repo = _repository;
     final docs = _documents;
     if (repo != null && docs != null) {
-      final saved = await _runWrite(() => repo.loadIfPresent(monday));
+      final saved = await repo.loadIfPresent(monday);
       if (saved != null) return saved;
     }
     final data = await _file(monday).read();
@@ -82,7 +84,7 @@ class WeekPlanStore {
   Future<void> save(WeekPlan plan) async {
     final repo = _repository;
     if (repo != null) {
-      await _runWrite(() => repo.save(plan));
+      await repo.save(plan);
       return;
     }
     await _runWrite(() => _file(plan.monday).update((saved) {

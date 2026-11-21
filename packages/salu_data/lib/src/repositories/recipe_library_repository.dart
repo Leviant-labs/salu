@@ -8,13 +8,17 @@ import 'local_document_store.dart';
 /// Where an ingredient is cooked, the shopping amount is for the ready-cooked
 /// form. The app must not infer dry amounts from cooked weights.
 final class RecipeLibraryRepository {
-  const RecipeLibraryRepository(this.foods, this.documents);
+  const RecipeLibraryRepository(this.foods, this.documents, {this.runWrite});
 
   final FoodRepository foods;
   final LocalDocumentStore documents;
+  final Future<T> Function<T>(Future<T> Function() work)? runWrite;
 
   static const _key = 'recipe-library';
   static const int currentVersion = 1;
+
+  Future<T> _write<T>(Future<T> Function() work) =>
+      runWrite != null ? runWrite!(work) : work();
 
   Future<List<RecipeVersion>> load() async {
     final local = await documents.read(_key);
@@ -74,7 +78,7 @@ final class RecipeLibraryRepository {
           for (final recipe in decoded) codec.encodeRecipe(recipe),
         ],
       };
-      if (!await documents.put(_key, local.revision, migrated)) {
+      if (!await _write(() => documents.put(_key, local.revision, migrated))) {
         final latest = await documents.read(_key);
         if (latest != null) return _decodeUserRecipes(latest.data);
       }
@@ -107,14 +111,14 @@ final class RecipeLibraryRepository {
         .any((row) => row.id == recipe.id && row.version == recipe.version)) {
       throw StateError('This recipe version already exists');
     }
-    if (!await documents.put(_key, previous?.revision ?? 0, {
-      ...?previous?.data,
-      'version': currentVersion,
-      'recipes': [
-        for (final row in existing) codec.encodeRecipe(row),
-        codec.encodeRecipe(recipe),
-      ],
-    })) {
+    if (!await _write(() => documents.put(_key, previous?.revision ?? 0, {
+          ...?previous?.data,
+          'version': currentVersion,
+          'recipes': [
+            for (final row in existing) codec.encodeRecipe(row),
+            codec.encodeRecipe(recipe),
+          ],
+        }))) {
       throw StateError('The recipe library changed. Try again.');
     }
   }
