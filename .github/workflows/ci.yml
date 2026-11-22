@@ -16,10 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned Flutter version
+        id: flutter-pin
+        run: echo "version=$(tr -d '[:space:]' < tool/flutter-version.txt)" >> "$GITHUB_OUTPUT"
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version-file: tool/flutter-version.txt
+          flutter-version: ${{ steps.flutter-pin.outputs.version }}
           cache: true
 
       - name: Install sqlite3
@@ -48,10 +52,14 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358'
 
+      - name: Read pinned Flutter version
+        id: flutter-pin
+        run: echo "version=$(tr -d '[:space:]' < tool/flutter-version.txt)" >> "$GITHUB_OUTPUT"
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version-file: tool/flutter-version.txt
+          flutter-version: ${{ steps.flutter-pin.outputs.version }}
           cache: true
 
       - name: Install sqlite3
@@ -85,10 +93,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned Flutter version
+        id: flutter-pin
+        run: echo "version=$(tr -d '[:space:]' < tool/flutter-version.txt)" >> "$GITHUB_OUTPUT"
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version-file: tool/flutter-version.txt
+          flutter-version: ${{ steps.flutter-pin.outputs.version }}
           cache: true
 
       - name: Run platform verifier fixture tests
@@ -127,10 +139,14 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358'
 
+      - name: Read pinned Flutter version
+        id: flutter-pin
+        run: echo "version=$(tr -d '[:space:]' < tool/flutter-version.txt)" >> "$GITHUB_OUTPUT"
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version-file: tool/flutter-version.txt
+          flutter-version: ${{ steps.flutter-pin.outputs.version }}
           cache: true
 
       - name: Install sqlite3

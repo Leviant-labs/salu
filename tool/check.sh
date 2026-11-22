@@ -18,7 +18,7 @@ fi
 
 (cd packages/salu_core && dart pub get --enforce-lockfile)
 (cd packages/salu_data && dart pub get --enforce-lockfile)
-(cd app && flutter pub get --enforce-lockfile)
+(cd app && flutter pub get --enforce-lockfile && flutter gen-l10n)
 
 (cd packages/salu_data && dart run build_runner build)
 
