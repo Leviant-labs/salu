@@ -1,5 +1,7 @@
 import 'package:salu_core/salu_core.dart';
 
+export 'package:salu_core/salu_core.dart' show reviseMealItem, sameMealPortion;
+
 extension MealSlotLabel on MealSlot {
   String get label => switch (this) {
         MealSlot.breakfast => 'Breakfast',
@@ -100,9 +102,6 @@ String? mealPortionText(MealPortion? portion) => portion == null
     ? null
     : '${mealNumberText(portion.amount)} ${portion.unit.label}';
 
-bool sameMealPortion(MealPortion? a, MealPortion? b) =>
-    a?.amount == b?.amount && a?.unit == b?.unit;
-
 NutrientProfile? _tryScale(NutrientProfile profile, double factor) {
   if (!factor.isFinite || factor <= 0) return null;
   try {
@@ -110,33 +109,6 @@ NutrientProfile? _tryScale(NutrientProfile profile, double factor) {
   } on ArgumentError {
     return null;
   }
-}
-
-/// The logged profile is as-consumed. Only the same food with compatible old
-/// and new portions can reuse it. A renamed food does not inherit its evidence.
-PhotoMealItem reviseMealItem(
-  PhotoMealItem original,
-  String name,
-  MealPortion? portion,
-) {
-  if (name.toLowerCase() != original.name.trim().toLowerCase()) {
-    return PhotoMealItem(id: original.id, name: name, portion: portion);
-  }
-  final before = original.portion;
-  if (sameMealPortion(before, portion)) return original.copyWith(name: name);
-  final nutrients =
-      before != null && portion != null && before.unit == portion.unit
-          ? _tryScale(original.nutrients, portion.amount / before.amount)
-          : null;
-  // Construct explicitly so an absent portion or source really is cleared.
-  return PhotoMealItem(
-    id: original.id,
-    name: name,
-    portion: portion,
-    nutrients: nutrients,
-    labelPaths: original.labelPaths,
-    source: nutrients?.hasAnyKnownValue == true ? original.source : null,
-  );
 }
 
 PhotoMealItem catalogueMealItem(Food food, MealPortion? portion) {
@@ -212,4 +184,24 @@ String mealTotalDetails(List<PhotoMealItem> items) {
     totals.add('Other nutrients unknown');
   }
   return totals.join(' · ');
+}
+
+String mealNutritionIssueText(NutritionIssue issue) {
+  final nutrient = issue.nutrient;
+  return switch (issue.code) {
+    'invalidValue' => nutrient != null
+        ? '${nutrient.label} had an invalid value and was left unknown.'
+        : 'An invalid nutrition value was left unknown.',
+    'absoluteLimit' => nutrient != null
+        ? '${nutrient.label} exceeded plausibility limits and was left unknown. Review or enter manually.'
+        : 'A value exceeded plausibility limits and was left unknown.',
+    'massInconsistent' => nutrient != null
+        ? '${nutrient.label} exceeded the portion weight and was left unknown. Review or enter manually.'
+        : 'A value exceeded the portion weight and was left unknown.',
+    'macroEnergyMismatch' =>
+      'Reported energy differs substantially from protein, carbs, fat, and fibre. Review before relying on it.',
+    _ => nutrient != null
+        ? '${nutrient.label} needs review (${issue.code}).'
+        : 'Nutrition needs review (${issue.code}).',
+  };
 }

@@ -1,18 +1,169 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
 import 'assistant/assistant.dart';
+import 'assistant/chatgpt_session.dart';
+import 'assistant/credential_store.dart';
+import 'assistant/endpoint_transport.dart';
+import 'assistant/inference_gateway.dart';
+import 'assistant/operation_fence.dart';
+import 'data_transfer/archive_service.dart';
+import 'data_transfer/data_reset_service.dart';
+import 'data_transfer/data_write_gate.dart';
+import 'features/meals/meal_estimation.dart';
 import 'features/onboarding/planning_profile.dart';
 import 'features/plan/week_plan.dart';
+import 'features/settings/connections_controller.dart';
+import 'media/managed_media_store.dart';
 
-/// The same assistant instance handles Settings, diary and Plan requests.
-final saluAssistant = SaluAssistant();
+final operationFenceProvider = Provider<OperationFence>((ref) {
+  final fence = OperationFence();
+  ref.onDispose(fence.invalidate);
+  return fence;
+});
+
+final dataWriteGateProvider = Provider<DataWriteGate>((ref) => DataWriteGate());
+
+final userDataRepositoryProvider = Provider<UserDataRepository>(
+  (ref) => UserDataRepository(ref.watch(databaseProvider)),
+);
+
+final archiveServiceProvider = Provider<ArchiveService>(
+  (ref) => ArchiveService(
+    data: ref.watch(userDataRepositoryProvider),
+    media: ref.watch(managedMediaStoreProvider),
+    fence: ref.watch(operationFenceProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    gate: ref.watch(dataWriteGateProvider),
+    stagingDirectory: getTemporaryDirectory,
+    markerDirectory: getApplicationSupportDirectory,
+    onRestored: () {
+      ref.invalidate(todayMealsProvider);
+      ref.invalidate(todayEntriesProvider);
+      ref.invalidate(connectionsControllerProvider);
+    },
+  ),
+);
+
+final dataResetServiceProvider = Provider<DataResetService>(
+  (ref) => DataResetService(
+    data: ref.watch(userDataRepositoryProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    fence: ref.watch(operationFenceProvider),
+    gate: ref.watch(dataWriteGateProvider),
+    supportDirectory: getApplicationSupportDirectory,
+    stagingDirectory: getTemporaryDirectory,
+    onReset: () {
+      ref.read(activeMealEstimatesProvider).reset();
+      ref.read(diarySelectionProvider.notifier).state = null;
+      ref.invalidate(todayMealsProvider);
+      ref.invalidate(todayEntriesProvider);
+      ref.invalidate(connectionsControllerProvider);
+    },
+  ),
+);
+
+final credentialStoreProvider = Provider<CredentialStore>(
+  (ref) => SecureCredentialStore(),
+);
+
+final endpointProfilesStoreProvider = Provider<EndpointProfilesStore>(
+  (ref) => EndpointProfilesStore(ref.watch(documentStoreProvider)),
+);
+
+final endpointTransportProvider = Provider<EndpointTransport>(
+  (ref) => EndpointTransport(),
+);
+
+final chatGptSessionProvider = Provider<ChatGptSession>(
+  (ref) => ChatGptSession(
+    transport: ref.watch(endpointTransportProvider),
+    fence: ref.watch(operationFenceProvider),
+  ),
+);
+
+final inferenceGatewayProvider = Provider<InferenceGateway>((ref) {
+  final fence = ref.watch(operationFenceProvider);
+  final transport = ref.watch(endpointTransportProvider);
+  final chatGpt = SaluAssistant(
+    chatGptSession: ref.watch(chatGptSessionProvider),
+    fence: fence,
+    transport: transport,
+  );
+  return InferenceGateway(
+    profiles: ref.watch(endpointProfilesStoreProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    transport: transport,
+    fence: fence,
+    chatGpt: chatGpt,
+  );
+});
+
+/// Scoped assistant facade shared across Settings, diary, check-in, and Plan.
+final assistantProvider = Provider<SaluAssistant>(
+  (ref) => SaluAssistant(
+    gateway: ref.watch(inferenceGatewayProvider),
+    fence: ref.watch(operationFenceProvider),
+    transport: ref.watch(endpointTransportProvider),
+  ),
+);
+
+final mealEstimateStatusStoreProvider = Provider<MealEstimateStatusStore>(
+  (ref) => MealEstimateStatusStore(ref.watch(databaseProvider)),
+);
+
+final mealEstimateErrorProvider = FutureProvider.family<SaluAssistantErrorCode?,
+    ({String mealId, int revision})>((ref, key) async {
+  final raw = await ref
+      .watch(mealEstimateStatusStoreProvider)
+      .errorFor(key.mealId, key.revision);
+  if (raw == null) return null;
+  return parseSaluAssistantErrorCode(raw);
+});
+
+final connectionsControllerProvider =
+    ChangeNotifierProvider<ConnectionsController>((ref) {
+  final fence = ref.watch(operationFenceProvider);
+  final chatGptSession = ref.watch(chatGptSessionProvider);
+  return ConnectionsController(
+    ref.watch(endpointProfilesStoreProvider),
+    ref.watch(credentialStoreProvider),
+    transport: ref.watch(endpointTransportProvider),
+    fence: fence,
+    isChatGptConnected: () => chatGptSession.isConnected,
+    signInChatGpt: chatGptSession.signIn,
+    signOutChatGpt: chatGptSession.signOut,
+    onInvalidate: fence.invalidate,
+  );
+});
+
+final activeMealEstimatesProvider =
+    ChangeNotifierProvider<ActiveMealEstimates>((ref) {
+  final tracker = ActiveMealEstimates();
+  ref.onDispose(tracker.reset);
+  return tracker;
+});
 
 final photoMealRepositoryProvider = Provider<PhotoMealRepository>(
   (ref) => DriftPhotoMealRepository(ref.watch(databaseProvider)),
+);
+
+final mealMutationRepositoryProvider = Provider<MealMutationRepository>(
+  (ref) => MealMutationRepository(
+    ref.watch(databaseProvider),
+    clock: ref.watch(clockProvider),
+  ),
+);
+
+final managedMediaStoreProvider = Provider<ManagedMediaStore>(
+  (ref) => ManagedMediaStore(
+    directory: getApplicationSupportDirectory,
+    newId: ref.read(idGeneratorProvider).next,
+  ),
 );
 
 final diarySelectionProvider = StateProvider<DiaryDate?>((ref) => null);
@@ -38,9 +189,19 @@ final databaseProvider = Provider<AppDatabase>(
 final documentStoreProvider = Provider<LocalDocumentStore>(
     (ref) => LocalDocumentStore(ref.watch(databaseProvider)));
 final planningProfileStoreProvider = Provider<PlanningProfileStore>(
-    (ref) => PlanningProfileStore(documents: ref.watch(documentStoreProvider)));
+  (ref) => PlanningProfileStore(
+    documents: ref.watch(documentStoreProvider),
+    gate: ref.watch(dataWriteGateProvider),
+  ),
+);
+final onboardingStoreProvider = Provider<OnboardingStore>(
+    (ref) => OnboardingStore(ref.watch(documentStoreProvider)));
 final weekPlanStoreProvider = Provider<WeekPlanStore>(
-    (ref) => WeekPlanStore(documents: ref.watch(documentStoreProvider)));
+  (ref) => WeekPlanStore(
+    documents: ref.watch(documentStoreProvider),
+    gate: ref.watch(dataWriteGateProvider),
+  ),
+);
 
 /// Catalogue reads.
 final foodRepositoryProvider = Provider<FoodRepository>(

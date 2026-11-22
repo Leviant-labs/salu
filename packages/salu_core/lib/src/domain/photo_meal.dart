@@ -1,4 +1,5 @@
 import 'nutrients.dart';
+import 'nutrition_screening.dart';
 import 'time.dart';
 
 enum MealSlot { breakfast, lunch, dinner, snack }
@@ -29,10 +30,12 @@ final class PhotoMealItem {
     List<String> labelPaths = const [],
     this.id,
     this.source,
+    List<NutritionIssue> reviewIssues = const [],
   })  : name = name.trim(),
         labelPaths = List.unmodifiable(
             {...labelPaths, if (labelPath != null) labelPath}),
-        nutrients = nutrients ?? const NutrientProfile.empty() {
+        nutrients = nutrients ?? const NutrientProfile.empty(),
+        reviewIssues = List.unmodifiable(reviewIssues) {
     if (this.name.isEmpty) throw ArgumentError('A food name is required');
   }
 
@@ -43,6 +46,7 @@ final class PhotoMealItem {
   final List<String> labelPaths;
   String? get labelPath => labelPaths.lastOrNull;
   final String? source;
+  final List<NutritionIssue> reviewIssues;
 
   PhotoMealItem copyWith({
     String? name,
@@ -51,6 +55,7 @@ final class PhotoMealItem {
     NutrientProfile? nutrients,
     String? labelPath,
     String? source,
+    List<NutritionIssue>? reviewIssues,
   }) =>
       PhotoMealItem(
         name: name ?? this.name,
@@ -60,6 +65,7 @@ final class PhotoMealItem {
         labelPaths: labelPaths,
         labelPath: labelPath,
         source: source ?? this.source,
+        reviewIssues: reviewIssues ?? this.reviewIssues,
       );
 }
 
@@ -95,20 +101,23 @@ final class PhotoMeal {
   final List<PhotoMealItem> items;
 
   PhotoMeal copyWith({
+    DiaryDate? date,
     MealSlot? slot,
     String? caption,
     List<PhotoMealItem>? items,
     int? revision,
+    String? photoPath,
+    bool clearPhoto = false,
     MealEstimateStatus? estimateStatus,
   }) =>
       PhotoMeal(
         id: id,
-        date: date,
+        date: date ?? this.date,
         slot: slot ?? this.slot,
         caption: caption ?? this.caption,
         createdAt: createdAt,
         revision: revision ?? this.revision,
-        photoPath: photoPath,
+        photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
         estimateStatus: estimateStatus ?? this.estimateStatus,
         recordedOffsetMinutes: recordedOffsetMinutes,
         items: items ?? this.items,

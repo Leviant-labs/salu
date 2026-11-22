@@ -1,15 +1,22 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:salu_core/salu_core.dart';
 
+import '../../assistant/assistant.dart';
+import '../../l10n/l10n_helper.dart';
+import '../../media/managed_media_store.dart';
 import '../../providers.dart';
+import '../../theme/tactile_controls.dart';
 import '../meals/meal_editor.dart';
+import '../meals/meal_editor_ai.dart';
 import '../meals/meal_editor_data.dart';
 import '../meals/meal_estimation.dart';
+import '../settings/connections_screen.dart';
 import 'check_in_screen.dart';
+import 'diary_summary.dart';
 import '../search/food_library.dart';
+import '../search/library_screen.dart';
 
 /// The photo diary. Original single-food logs still appear and count here.
 class TodayScreen extends ConsumerWidget {
@@ -22,14 +29,27 @@ class TodayScreen extends ConsumerWidget {
       builder: (_) => MealEditor(
         meal: meal,
         repository: ref.read(photoMealRepositoryProvider),
-        assistant: saluAssistant,
+        mutations: ref.read(mealMutationRepositoryProvider),
+        assistant: ref.read(assistantProvider),
+        media: ref.read(managedMediaStoreProvider),
+        activeEstimates: ref.read(activeMealEstimatesProvider),
+        estimateStatusStore: ref.read(mealEstimateStatusStoreProvider),
+        gate: ref.read(dataWriteGateProvider),
+        fence: ref.read(operationFenceProvider),
         foods: ref.read(foodRepositoryProvider),
         date: ref.read(visibleDiaryDateProvider),
         today: today,
         initialCorrection: correction,
-        library: FoodLibrary(ref.read(documentStoreProvider)),
+        library: FoodLibrary(
+          ref.read(documentStoreProvider),
+          gate: ref.read(dataWriteGateProvider),
+        ),
         onLogged: (date) => ref.read(diarySelectionProvider.notifier).state =
             date == today ? null : date,
+        onMutated: (_, __) {
+          ref.invalidate(todayMealsProvider);
+          ref.invalidate(todayEntriesProvider);
+        },
         newId: ref.read(idGeneratorProvider).next,
       ),
     ));
@@ -125,13 +145,14 @@ class TodayScreen extends ConsumerWidget {
           for (final item in meal.items) item.nutrients,
     ];
     final theme = Theme.of(context);
+    final l10n = saluL10n(context);
     final ready = meals.hasValue && entries.hasValue;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
         Row(children: [
           IconButton(
-              tooltip: 'Previous day',
+              tooltip: l10n.todayPreviousDay,
               icon: const Icon(Icons.chevron_left),
               onPressed: () => ref.read(diarySelectionProvider.notifier).state =
                   date.addDays(-1)),
@@ -141,7 +162,7 @@ class TodayScreen extends ConsumerWidget {
                   icon: const Icon(Icons.calendar_today_outlined),
                   label: Text(date.toIso()))),
           IconButton(
-              tooltip: 'Next day',
+              tooltip: l10n.todayNextDay,
               icon: const Icon(Icons.chevron_right),
               onPressed: date.compareTo(today) >= 0
                   ? null
@@ -149,28 +170,45 @@ class TodayScreen extends ConsumerWidget {
                       date.addDays(1)),
         ]),
         const SizedBox(height: 8),
-        Text('Meal diary',
+        Text(l10n.todayTitle,
             style: theme.textTheme.headlineMedium
                 ?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text('A little more awareness, one meal at a time.',
+        Text(l10n.todaySubtitle,
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 20),
-        FilledButton.icon(
+        const SizedBox(height: 12),
+        SaluTactileButton(
           onPressed: () => _edit(context, ref, null),
           icon: const Icon(Icons.add_a_photo_outlined),
-          label: const Text('Log a meal'),
+          child: Text(l10n.todayLogMeal),
         ),
-        TextButton.icon(
-            onPressed: () => _findCorrection(context, ref),
-            icon: const Icon(Icons.edit_note),
-            label: const Text('Find and correct a meal')),
-        TextButton.icon(
-            onPressed: () => Navigator.of(context).push<void>(
-                MaterialPageRoute(builder: (_) => CheckInScreen(date: date))),
-            icon: const Icon(Icons.insights_outlined),
-            label: const Text('Weekly check-in')),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 4,
+          runSpacing: 0,
+          children: [
+            TextButton.icon(
+                onPressed: () {
+                  final router = GoRouter.maybeOf(context);
+                  if (router != null) {
+                    router.go(LibraryScreen.routePath);
+                  }
+                },
+                icon: const Icon(Icons.bookmarks_outlined),
+                label: Text(l10n.todayReuseFromLibrary)),
+            TextButton.icon(
+                onPressed: () => _findCorrection(context, ref),
+                icon: const Icon(Icons.edit_note),
+                label: Text(l10n.todayFindCorrectMeal)),
+            TextButton.icon(
+                onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                        builder: (_) => CheckInScreen(date: date))),
+                icon: const Icon(Icons.insights_outlined),
+                label: Text(l10n.todayWeeklyCheckIn)),
+          ],
+        ),
         const SizedBox(height: 12),
         if (meals.hasError || entries.hasError)
           OutlinedButton(
@@ -178,10 +216,17 @@ class TodayScreen extends ConsumerWidget {
               ref.invalidate(todayMealsProvider);
               ref.invalidate(todayEntriesProvider);
             },
-            child: const Text('Could not load all meals. Try again'),
+            child: Text(l10n.todayLoadError),
           )
         else if (!ready)
           const LinearProgressIndicator(),
+        if (ready && profiles.isNotEmpty) ...[
+          DiarySummary(
+            profiles: profiles,
+            isToday: date == today,
+          ),
+          const SizedBox(height: 12),
+        ],
         if (ready && profiles.isEmpty) ...[
           const SizedBox(height: 20),
           Card(
@@ -196,11 +241,10 @@ class TodayScreen extends ConsumerWidget {
                           color: theme.colorScheme.onSecondaryContainer),
                     ),
                     const SizedBox(height: 16),
-                    Text('Nothing logged yet',
+                    Text(l10n.todayNothingLoggedTitle,
                         style: theme.textTheme.titleLarge),
                     const SizedBox(height: 6),
-                    Text(
-                        'Start with a meal photo, a description, or a food search.',
+                    Text(l10n.todayNothingLoggedBody,
                         style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant)),
                   ]),
@@ -210,79 +254,70 @@ class TodayScreen extends ConsumerWidget {
         for (final slot in MealSlot.values)
           if (photos.any((meal) => meal.slot == slot)) ...[
             const SizedBox(height: 16),
-            Text(slot.label, style: theme.textTheme.titleLarge),
+            Text(localizedMealSlotLabel(l10n, slot),
+                style: theme.textTheme.titleLarge),
             for (final meal in photos.where((meal) => meal.slot == slot))
               _MealCard(
-                  meal: meal,
-                  onTap: () => _edit(context, ref, meal),
-                  retry: () => estimateSavedMeal(
-                      meal: meal,
-                      repository: ref.read(photoMealRepositoryProvider),
-                      assistant: saluAssistant,
-                      newId: ref.read(idGeneratorProvider).next)),
+                meal: meal,
+                onTap: () => _edit(context, ref, meal),
+                openConnections: () =>
+                    Navigator.of(context, rootNavigator: true).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ConnectionsScreen(
+                      controller: ref.read(connectionsControllerProvider),
+                    ),
+                  ),
+                ),
+                retry: () async {
+                  await estimateSavedMeal(
+                    meal: meal,
+                    repository: ref.read(photoMealRepositoryProvider),
+                    assistant: ref.read(assistantProvider),
+                    media: ref.read(managedMediaStoreProvider),
+                    newId: ref.read(idGeneratorProvider).next,
+                    activeEstimates: ref.read(activeMealEstimatesProvider),
+                    statusStore: ref.read(mealEstimateStatusStoreProvider),
+                    fence: ref.read(operationFenceProvider),
+                    gate: ref.read(dataWriteGateProvider),
+                  );
+                  if (context.mounted) {
+                    ref.invalidate(mealEstimateErrorProvider);
+                  }
+                },
+              ),
           ],
         if (legacy.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Individual foods', style: theme.textTheme.titleLarge),
+          Text(l10n.todayIndividualFoods, style: theme.textTheme.titleLarge),
           for (final entry in legacy)
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.restaurant_outlined),
               title: Text(entry.items.map((item) => item.name).join(', ')),
               subtitle: Text('${mealNumberText(entry.grams)} g · '
-                  '${_total(entry.items.map((item) => item.nutrients), NutrientKey.energyKcal)}'),
+                  '${formatNutrientRollup(entry.items.map((item) => item.nutrients), NutrientKey.energyKcal, partialLabel: l10n.todayPartialLabel)}'),
             ),
         ],
-        if (ready && profiles.isNotEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                      date == today ? 'Recorded today' : 'Recorded on this day',
-                      style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 8,
-                    children: [
-                      for (final key in const [
-                        NutrientKey.energyKcal,
-                        NutrientKey.proteinG,
-                        NutrientKey.carbohydrateG,
-                        NutrientKey.fatG,
-                        NutrientKey.fiberG
-                      ])
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(key.label),
-                            Text(_total(profiles, key))
-                          ],
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
       ],
     );
   }
 }
 
-class _MealCard extends StatelessWidget {
-  const _MealCard(
-      {required this.meal, required this.onTap, required this.retry});
+class _MealCard extends ConsumerWidget {
+  const _MealCard({
+    required this.meal,
+    required this.onTap,
+    required this.retry,
+    required this.openConnections,
+  });
 
   final PhotoMeal meal;
   final VoidCallback onTap;
   final VoidCallback retry;
+  final VoidCallback openConnections;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final path = meal.photoPath;
     final title = meal.caption.isNotEmpty
@@ -291,7 +326,20 @@ class _MealCard extends StatelessWidget {
             ? meal.slot.label
             : meal.items.map((item) => item.name).join(', ');
     final estimated =
-        meal.items.any((item) => item.source == 'openai-meal-estimate');
+        meal.items.any((item) => isAiMealEstimateSource(item.source));
+    final needsRecovery =
+        meal.items.isEmpty && meal.estimateStatus != MealEstimateStatus.none;
+    final activeEstimates =
+        needsRecovery ? ref.watch(activeMealEstimatesProvider) : null;
+    final errorCode =
+        needsRecovery && meal.estimateStatus == MealEstimateStatus.unavailable
+            ? ref
+                .watch(mealEstimateErrorProvider(
+                  (mealId: meal.id, revision: meal.revision),
+                ))
+                .valueOrNull
+            : null;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -302,13 +350,13 @@ class _MealCard extends StatelessWidget {
             if (path != null)
               AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Image.file(
-                  File(path),
+                child: ManagedMediaImage(
+                  reference: path,
+                  media: ref.watch(managedMediaStoreProvider),
                   fit: BoxFit.cover,
                   cacheWidth: 1200,
                   semanticLabel: '${meal.slot.label} photo',
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Center(child: Text('Meal photo unavailable')),
+                  unavailableText: 'Meal photo unavailable',
                 ),
               ),
             Padding(
@@ -325,22 +373,85 @@ class _MealCard extends StatelessWidget {
                       : '${_total(meal.items.map((item) => item.nutrients), NutrientKey.energyKcal)}'
                           '${estimated ? ' · AI estimate' : ''}'),
                   Text('Review or correct', style: theme.textTheme.labelLarge),
-                  if (meal.items.isEmpty &&
-                      meal.estimateStatus != MealEstimateStatus.none)
+                  if (needsRecovery && activeEstimates != null)
                     ValueListenableBuilder<Set<String>>(
-                        valueListenable: activeMealEstimates,
-                        builder: (context, active, child) => active
-                                .contains(meal.id)
-                            ? const Text('Estimating…')
-                            : TextButton(
-                                onPressed: retry,
-                                child: const Text(
-                                    'Retry AI estimate (sends photo/text to OpenAI)'))),
+                      valueListenable: activeEstimates,
+                      builder: (context, active, child) {
+                        if (active.contains(meal.id)) {
+                          return const Text('Estimating…');
+                        }
+                        return _EstimateRecovery(
+                          errorCode: errorCode,
+                          retry: retry,
+                          openConnections: openConnections,
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EstimateRecovery extends StatelessWidget {
+  const _EstimateRecovery({
+    required this.errorCode,
+    required this.retry,
+    required this.openConnections,
+  });
+
+  final SaluAssistantErrorCode? errorCode;
+  final VoidCallback retry;
+  final VoidCallback openConnections;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = errorCode;
+    final theme = Theme.of(context);
+    final l10n = saluL10n(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (code != null)
+            Text(
+              localizedErrorMessage(l10n, code),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (code == SaluAssistantErrorCode.notConnected ||
+                  code == SaluAssistantErrorCode.authenticationFailed)
+                FilledButton.tonal(
+                  onPressed: openConnections,
+                  child: Text(l10n.todayOpenConnections),
+                )
+              else if (code == SaluAssistantErrorCode.quotaExceeded ||
+                  code == SaluAssistantErrorCode.rateLimited)
+                OutlinedButton(
+                  onPressed: openConnections,
+                  child: Text(l10n.todaySwitchConnection),
+                ),
+              TextButton(
+                onPressed: retry,
+                child: Text(
+                  code == SaluAssistantErrorCode.busy
+                      ? 'Wait and retry AI estimate'
+                      : 'Retry AI estimate',
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

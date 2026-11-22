@@ -21,6 +21,9 @@ enum InferenceTask {
 
   /// Explain an app-computed finding in plain language.
   explainFinding,
+
+  /// Propose meal plan suggestions from preferences and available recipes.
+  planSuggestions,
 }
 
 /// Optional provider features. Advertised support is a hint, never a guarantee.
@@ -59,6 +62,7 @@ final class InferenceRequest {
   const InferenceRequest({
     required this.requestId,
     required this.task,
+    this.instructions = '',
     required this.prompt,
     this.images = const <ImageAttachment>[],
     this.expectedSchema,
@@ -70,7 +74,10 @@ final class InferenceRequest {
   /// The task this request represents.
   final InferenceTask task;
 
-  /// Instruction text. Never contains data the user did not agree to share.
+  /// Trusted system/developer instructions for the task.
+  final String instructions;
+
+  /// Untrusted user input text. Never contains data the user did not agree to share.
   final String prompt;
 
   /// Images attached to the request.

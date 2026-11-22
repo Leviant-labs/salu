@@ -1,25 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
+import 'onboarding_pages.dart';
+import 'onboarding_wizard.dart';
 import 'planning_profile.dart';
 
 /// Standalone profile setup/edit screen, suitable for a top-level route.
 class OnboardingScreen extends StatelessWidget {
-  const OnboardingScreen(
-      {super.key, this.store, this.onSaved, this.firstRun = false});
+  const OnboardingScreen({
+    super.key,
+    this.store,
+    this.onboardingStore,
+    this.gate,
+    this.onSaved,
+    this.firstRun = false,
+    this.openConnections,
+  });
 
   static const routeName = '/onboarding';
 
   final PlanningProfileStore? store;
+  final OnboardingStore? onboardingStore;
+  final DataWriteGate? gate;
   final VoidCallback? onSaved;
   final bool firstRun;
+  final Future<void> Function(BuildContext)? openConnections;
 
   @override
-  Widget build(BuildContext context) => _ProfileEditor(
-        store: store ?? PlanningProfileStore.local,
-        preferencesOnly: false,
-        onSaved: onSaved,
-        firstRun: firstRun,
+  Widget build(BuildContext context) {
+    if (firstRun && onboardingStore != null) {
+      return OnboardingWizard(
+        store: onboardingStore!,
+        gate: gate,
+        onCompleted: onSaved ?? () {},
+        openConnections: openConnections,
       );
+    }
+    return _ProfileEditor(
+      store: store ?? PlanningProfileStore.local,
+      preferencesOnly: false,
+      onSaved: onSaved,
+    );
+  }
 }
 
 /// The Plan workspace can edit food preferences without collecting weight.
@@ -40,13 +63,11 @@ class _ProfileEditor extends StatefulWidget {
     required this.store,
     required this.preferencesOnly,
     this.onSaved,
-    this.firstRun = false,
   });
 
   final PlanningProfileStore store;
   final bool preferencesOnly;
   final VoidCallback? onSaved;
-  final bool firstRun;
 
   @override
   State<_ProfileEditor> createState() => _ProfileEditorState();
@@ -111,7 +132,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   double? _number(String text) =>
       double.tryParse(text.trim().replaceAll(',', '.'));
 
-  String? _validateNumber(String? text, {required bool required}) {
+  String? _validateNumber(String? text, {bool required = false}) {
     final value = text?.trim() ?? '';
     if (value.isEmpty) return required ? 'Enter a starting weight.' : null;
     final number = _number(value);
@@ -172,20 +193,6 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     }
   }
 
-  Future<void> _skip() async {
-    setState(() => _saving = true);
-    try {
-      await widget.store.skipOnboarding();
-      if (mounted) widget.onSaved?.call();
-    } catch (_) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not save setup.')));
-      }
-    }
-  }
-
   @override
   void dispose() {
     for (final controller in [
@@ -239,14 +246,6 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (!widget.preferencesOnly) ...[
-              if (widget.firstRun) ...[
-                Text('Welcome to Salu',
-                    style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 8),
-                const Text(
-                    'Let’s make your diary and meal plans your own. Everything here is optional and can be changed later.'),
-                const SizedBox(height: 24),
-              ],
               const Text(
                 'Record your starting point and any goals you’ve chosen. No targets are calculated for you.',
               ),
@@ -265,7 +264,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                         labelText: 'Starting weight',
                       ),
                       validator: (text) =>
-                          _validateNumber(text, required: !widget.firstRun),
+                          _validateNumber(text, required: false),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -354,29 +353,18 @@ class _ProfileEditorState extends State<_ProfileEditor> {
               hint: 'Separate foods with commas or new lines',
               maxLines: 4,
             ),
-            _textField(_allergens, 'Strict allergies (optional)',
-                hint:
-                    'Separate names with commas. Recipes with unknown allergy information are excluded from suggestions.',
-                maxLines: 2),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: Text(
-                _saving
-                    ? 'Saving…'
-                    : widget.preferencesOnly
-                        ? 'Save preferences'
-                        : widget.firstRun
-                            ? 'Get started'
-                            : 'Save profile',
-              ),
+            const SizedBox(height: 12),
+            StrictAllergenSelector(
+              controller: _allergens,
+              enabled: !_saving,
+              onChanged: () {
+                if (_saved) setState(() => _saved = false);
+              },
             ),
-            if (widget.firstRun)
-              TextButton(
-                  onPressed: _saving ? null : _skip,
-                  child: const Text('Skip for now')),
-            if (_saved)
+            if (_saved) ...[
+              const SizedBox(height: 12),
               const Text('Saved on this device.', textAlign: TextAlign.center),
+            ],
           ],
         ),
       ),
@@ -387,13 +375,27 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: Text(
-            widget.preferencesOnly
-                ? 'Food preferences'
-                : widget.firstRun
-                    ? 'Your setup'
-                    : 'Planning profile',
+            widget.preferencesOnly ? 'Food preferences' : 'Planning profile',
           ),
         ),
+        bottomNavigationBar: _loading || _loadFailed
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: Text(
+                      _saving
+                          ? 'Saving…'
+                          : widget.preferencesOnly
+                              ? 'Save preferences'
+                              : 'Save profile',
+                    ),
+                  ),
+                ),
+              ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _loadFailed

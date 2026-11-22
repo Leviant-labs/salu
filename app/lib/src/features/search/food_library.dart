@@ -2,125 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:salu_core/salu_core.dart';
 import 'package:salu_data/salu_data.dart';
 
+import '../../data_transfer/data_write_gate.dart';
 import '../meals/meal_editor_data.dart';
 import '../meals/meal_editor_dialogs.dart';
 import '../plan/recipe_library.dart';
 
-typedef SavedFood = ({
-  String id,
-  String name,
-  String? barcode,
-  BoundedNutrition nutrition
-});
-typedef SavedMeal = ({String id, String name, List<PhotoMealItem> items});
+export 'package:salu_data/salu_data.dart' show SavedFood, SavedMeal;
 
 class FoodLibrary {
-  const FoodLibrary(this.documents);
+  const FoodLibrary(this.documents, {this.gate});
   final LocalDocumentStore documents;
-  static const _key = 'food-library';
+  final DataWriteGate? gate;
+  static const int currentVersion = FoodLibraryRepository.currentVersion;
 
-  Future<List<SavedFood>> foods() async => [
-        for (final raw
-            in (await documents.read(_key))?.data['foods'] as List? ?? const [])
-          (
-            id: raw['id'] as String,
-            name: raw['name'] as String,
-            barcode: raw['barcode'] as String?,
-            nutrition: BoundedNutrition(
-                MealPortion((raw['amount'] as num).toDouble(),
-                    MealUnit.values.byName(raw['unit'] as String)),
-                NutrientProfile.fromJson(
-                    raw['nutrients'] as Map<String, dynamic>))
-          ),
-      ];
+  FoodLibraryRepository get _repository =>
+      FoodLibraryRepository(documents, runWrite: gate?.runWrite);
 
-  Future<List<SavedMeal>> meals() async => [
-        for (final raw
-            in (await documents.read(_key))?.data['meals'] as List? ?? const [])
-          (
-            id: raw['id'] as String,
-            name: raw['name'] as String,
-            items: [
-              for (final i in raw['items'] as List)
-                PhotoMealItem(
-                    name: i['name'] as String,
-                    portion: i['amount'] == null
-                        ? null
-                        : MealPortion((i['amount'] as num).toDouble(),
-                            MealUnit.values.byName(i['unit'] as String)),
-                    nutrients: NutrientProfile.fromJson(
-                        i['nutrients'] as Map<String, dynamic>),
-                    source: i['source'] as String?),
-            ]
-          ),
-      ];
+  Future<List<SavedFood>> foods() => _repository.foods();
 
-  Future<Set<String>> favorites() async =>
-      ((await documents.read(_key))?.data['favorites'] as List? ?? const [])
-          .cast<String>()
-          .toSet();
+  Future<List<SavedMeal>> meals() => _repository.meals();
 
-  Future<void> toggleFavorite(String id) => _update((json) {
-        final ids =
-            (json['favorites'] as List? ?? const []).cast<String>().toSet();
-        if (!ids.remove(id)) ids.add(id);
-        return {...json, 'favorites': ids.toList()};
-      });
+  Future<Set<String>> favorites() => _repository.favorites();
 
-  Future<void> saveFood(SavedFood food) => _update((json) {
-        final rows = (json['foods'] as List? ?? const [])
-            .where((row) => row['id'] != food.id)
-            .toList();
-        if (food.barcode != null &&
-            rows.any((row) => row['barcode'] == food.barcode)) {
-          throw StateError('Barcode is already saved');
-        }
-        return {
-          ...json,
-          'foods': [
-            ...rows,
-            {
-              'id': food.id,
-              'name': food.name,
-              'barcode': food.barcode,
-              'amount': food.nutrition.basis.amount,
-              'unit': food.nutrition.basis.unit.name,
-              'nutrients': food.nutrition.nutrients.toJson()
-            }
-          ]
-        };
-      });
+  Future<void> toggleFavorite(String id) => _repository.toggleFavorite(id);
 
-  Future<void> saveMeal(SavedMeal meal) => _update((json) => {
-        ...json,
-        'meals': [
-          ...(json['meals'] as List? ?? const [])
-              .where((row) => row['id'] != meal.id),
-          {
-            'id': meal.id,
-            'name': meal.name,
-            'items': [
-              for (final item in meal.items)
-                {
-                  'name': item.name,
-                  'amount': item.portion?.amount,
-                  'unit': item.portion?.unit.name,
-                  'source': item.source,
-                  'nutrients': item.nutrients.toJson(),
-                }
-            ]
-          },
-        ]
-      });
+  Future<void> saveFood(SavedFood food) => _repository.saveFood(food);
 
-  Future<void> _update(
-      Map<String, Object?> Function(Map<String, dynamic>) change) async {
-    final old = await documents.read(_key);
-    if (!await documents.put(
-        _key, old?.revision ?? 0, change(old?.data ?? {}))) {
-      throw StateError('Food library changed');
-    }
-  }
+  Future<void> saveMeal(SavedMeal meal) => _repository.saveMeal(meal);
 }
 
 Future<PhotoMealItem?> pickSavedFoodPortion(
@@ -154,11 +62,16 @@ Future<PhotoMealItem?> pickSavedFoodPortion(
           ));
   if (result == null) return null;
   final portion = MealPortion(result, basis.unit);
+  final nutrients = food.nutrition.forPortion(portion);
+  final reviewIssues = nutrients == null
+      ? const <NutritionIssue>[]
+      : screenNutrition(nutrients, portion: portion).issues;
   return PhotoMealItem(
       name: food.name,
       portion: portion,
-      nutrients: food.nutrition.forPortion(portion),
-      source: 'saved-food:${food.id}');
+      nutrients: nutrients,
+      source: 'saved-food:${food.id}',
+      reviewIssues: reviewIssues);
 }
 
 Future<SavedFood?> editSavedFood(BuildContext context, String id,
@@ -312,6 +225,16 @@ class _RecipeFormState extends State<_RecipeForm> {
   late var minutes = widget.previous?.prepMinutes.toString() ?? '15';
   late var method = widget.previous?.method ?? '';
   late final ingredients = <RecipeIngredient>[...?widget.previous?.ingredients];
+  late var _declaredAllergens = widget.previous?.allergens != null;
+  late final Set<AllergenId> _selectedAllergens = {
+    for (final tag in widget.previous?.allergens ?? const <String>{})
+      if (resolveAllergen(tag) case final id?) id,
+  };
+  late final List<String> _legacyAllergenTags = [
+    for (final tag in widget.previous?.allergens ?? const <String>{})
+      if (resolveAllergen(tag) == null) tag,
+  ];
+  late var _allergenSource = widget.previous?.allergenSource ?? '';
   Future<void> _ingredient() async {
     final food = await findMealFood(context, widget.library.foods);
     if (food == null || !mounted) return;
@@ -387,6 +310,78 @@ class _RecipeFormState extends State<_RecipeForm> {
                     onPressed: _ingredient,
                     icon: const Icon(Icons.add),
                     label: const Text('Add catalogue ingredient in grams')),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Allergen declaration',
+                      style: Theme.of(context).textTheme.titleSmall),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Unknown status'),
+                      selected: !_declaredAllergens,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() => _declaredAllergens = false);
+                        }
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('Declared allergens'),
+                      selected: _declaredAllergens,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() => _declaredAllergens = true);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (!_declaredAllergens)
+                  const Text(
+                      'Unknown status: excluded when strict allergies are active.')
+                else ...[
+                  const Text(
+                      'Select allergens in listed ingredients. Leaving all unchecked declares none of the 14 canonical allergens (not a cross-contamination guarantee).'),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final id in AllergenId.values)
+                        FilterChip(
+                          label: Text(id.label),
+                          selected: _selectedAllergens.contains(id),
+                          onSelected: (selected) => setState(() {
+                            if (selected) {
+                              _selectedAllergens.add(id);
+                            } else {
+                              _selectedAllergens.remove(id);
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                  if (_selectedAllergens.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child:
+                          Text('Declared: none of the 14 canonical allergens.'),
+                    ),
+                  TextFormField(
+                    initialValue: _allergenSource,
+                    decoration: const InputDecoration(
+                      labelText: 'Allergen source / provenance',
+                      hintText: 'e.g. Checked product ingredient labels',
+                    ),
+                    onChanged: (value) => _allergenSource = value,
+                  ),
+                ],
               ])),
           actions: [
             TextButton(
@@ -407,7 +402,18 @@ class _RecipeFormState extends State<_RecipeForm> {
                                 prepMinutes: mealNumber(minutes)!.round(),
                                 servings: mealNumber(servings)!,
                                 finishedGrams: mealNumber(yieldText),
-                                ingredients: ingredients));
+                                ingredients: ingredients,
+                                allergens: _declaredAllergens
+                                    ? {
+                                        for (final id in _selectedAllergens)
+                                          id.name,
+                                        ..._legacyAllergenTags,
+                                      }
+                                    : null,
+                                allergenSource: _declaredAllergens &&
+                                        _allergenSource.trim().isNotEmpty
+                                    ? _allergenSource.trim()
+                                    : null));
                       },
                 child: const Text('Save recipe'))
           ]);

@@ -152,7 +152,8 @@ final class NutrientReported extends NutrientValue {
   Map<String, Object?> toJson() => {'state': 'reported', 'value': value};
 
   @override
-  bool operator ==(Object other) => other is NutrientReported && other.value == value;
+  bool operator ==(Object other) =>
+      other is NutrientReported && other.value == value;
 
   @override
   int get hashCode => Object.hash('reported', value);

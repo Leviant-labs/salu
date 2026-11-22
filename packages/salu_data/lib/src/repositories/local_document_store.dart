@@ -35,4 +35,8 @@ final class LocalDocumentStore {
             ));
         return true;
       });
+
+  Future<void> remove(String id) async {
+    await (db.delete(db.localDocuments)..where((t) => t.id.equals(id))).go();
+  }
 }

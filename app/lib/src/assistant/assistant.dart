@@ -4,8 +4,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:salu_core/salu_core.dart';
 
 import 'chatgpt_session.dart';
+import 'endpoint_transport.dart';
+import 'inference_gateway.dart';
+import 'operation_fence.dart';
 
 enum SaluAssistantErrorCode {
   notConnected,
@@ -29,6 +33,15 @@ enum SaluAssistantErrorCode {
   refused,
 }
 
+/// Validates a persisted error code string, mapping unknown future values to
+/// [SaluAssistantErrorCode.serviceUnavailable].
+SaluAssistantErrorCode parseSaluAssistantErrorCode(String raw) {
+  for (final code in SaluAssistantErrorCode.values) {
+    if (code.name == raw) return code;
+  }
+  return SaluAssistantErrorCode.serviceUnavailable;
+}
+
 /// Safe to display. Deliberately excludes provider messages and raw causes.
 final class SaluAssistantException implements Exception {
   const SaluAssistantException(this.code);
@@ -37,12 +50,12 @@ final class SaluAssistantException implements Exception {
 
   String get message => switch (code) {
         SaluAssistantErrorCode.notConnected =>
-          'Continue with ChatGPT in Settings first.',
+          'Connect an AI provider in Settings first.',
         SaluAssistantErrorCode.connectionChanged =>
-          'The OpenAI connection changed. Please try again.',
-        SaluAssistantErrorCode.invalidKey => 'Enter a valid OpenAI API key.',
+          'The AI connection changed. Please try again.',
+        SaluAssistantErrorCode.invalidKey => 'Enter a valid API key.',
         SaluAssistantErrorCode.storageUnavailable =>
-          'Could not access secure storage for your OpenAI key.',
+          'Could not access secure storage for your credentials.',
         SaluAssistantErrorCode.busy =>
           'An assistant request is already running.',
         SaluAssistantErrorCode.invalidInput => 'Enter text or attach an image.',
@@ -50,33 +63,33 @@ final class SaluAssistantException implements Exception {
           'The request is too large. Shorten the text or use fewer or smaller images.',
         SaluAssistantErrorCode.unsupportedImage => 'Use JPEG or PNG images.',
         SaluAssistantErrorCode.authenticationFailed =>
-          'Your OpenAI session expired. Reconnect in Settings.',
+          'Your AI credentials were rejected or expired. Reconnect in Settings.',
         SaluAssistantErrorCode.accessDenied =>
-          'Your account does not have access to this request.',
+          'Your account or key does not have access to this request.',
         SaluAssistantErrorCode.quotaExceeded =>
-          'Check your ChatGPT plan usage and limits.',
+          'Usage limit or quota exceeded for the active AI provider.',
         SaluAssistantErrorCode.rateLimited =>
-          'OpenAI is rate limiting requests. Wait a moment and try again.',
-        SaluAssistantErrorCode.timeout => 'The OpenAI request timed out.',
+          'The AI provider is rate limiting requests. Wait a moment and try again.',
+        SaluAssistantErrorCode.timeout => 'The AI request timed out.',
         SaluAssistantErrorCode.networkError =>
-          'Could not reach OpenAI. Check your internet connection.',
+          'Could not reach the AI provider. Check your connection and endpoint.',
         SaluAssistantErrorCode.serviceUnavailable =>
-          'OpenAI is temporarily unavailable. Try again later.',
+          'The AI provider is temporarily unavailable. Try again later.',
         SaluAssistantErrorCode.requestRejected =>
-          'OpenAI rejected the request. Check your input or model access.',
+          'The AI provider rejected the request. Check your endpoint, input, or model access.',
         SaluAssistantErrorCode.invalidResponse =>
-          'OpenAI returned an invalid reply.',
+          'The AI provider returned an invalid reply.',
         SaluAssistantErrorCode.incompleteResponse =>
-          'OpenAI did not finish the reply. Try a shorter request.',
+          'The AI provider did not finish the reply. Try a shorter request.',
         SaluAssistantErrorCode.refused =>
-          'OpenAI declined to answer this request.',
+          'The AI provider declined to answer this request.',
       };
 
   @override
   String toString() => message;
 }
 
-/// Storage port for the single local OpenAI credential.
+/// Storage port for the single local API key credential.
 abstract interface class SaluAssistantKeyStore {
   Future<String?> read();
   Future<void> write(String key);
@@ -99,9 +112,8 @@ final class _SecureKeyStore implements SaluAssistantKeyStore {
   Future<void> delete() => _storage.delete(key: _slot);
 }
 
-/// Optional native client for the OpenAI API. Only [ask] uses the network.
-/// Share one instance between Settings and callers so changing the key can
-/// abort its in-flight request. The default transport and storage are lazy.
+/// Assistant facade. Delegates to [InferenceGateway] when provided, or preserves
+/// the direct ChatGPT-session / legacy key-store behavior when absent.
 final class SaluAssistant {
   /// An injected HTTP factory must return a fresh client for each request.
   SaluAssistant({
@@ -109,11 +121,32 @@ final class SaluAssistant {
     ChatGptSession? chatGptSession,
     HttpClient Function()? httpClientFactory,
     Duration requestTimeout = const Duration(seconds: 45),
-  })  : _keyStore = keyStore ?? const _SecureKeyStore(),
-        _chatgpt =
-            chatGptSession ?? (keyStore == null ? ChatGptSession() : null),
-        _newClient = httpClientFactory ?? _createHttpClient,
-        _requestTimeout = requestTimeout;
+    OperationFence? fence,
+    EndpointTransport? transport,
+    InferenceGateway? gateway,
+  })  : _gateway = gateway,
+        _keyStore =
+            gateway != null ? null : (keyStore ?? const _SecureKeyStore()),
+        _fence = fence ?? OperationFence(),
+        _requestTimeout = requestTimeout,
+        _ownsChatGpt =
+            gateway == null && chatGptSession == null && keyStore == null {
+    _transport = transport ??
+        EndpointTransport(
+          clientFactory: httpClientFactory,
+          timeout: requestTimeout,
+        );
+    _chatgpt = gateway != null
+        ? null
+        : (chatGptSession ??
+            (keyStore == null
+                ? ChatGptSession(
+                    transport: _transport,
+                    fence: _fence,
+                    timeout: requestTimeout,
+                  )
+                : null));
+  }
 
   static final _endpoint = Uri.https('api.openai.com', '/v1/responses');
   static const _defaultModel = 'gpt-4.1-mini';
@@ -126,29 +159,62 @@ final class SaluAssistant {
   static const _maxImageCount = 4;
   static const _maxImageBytes = 4 * 1024 * 1024;
   static const _maxTotalImageBytes = 8 * 1024 * 1024;
-  static const _maxResponseBytes = 512 * 1024;
+  static const _maxResponseBytes = EndpointTransport.defaultMaxBytes;
   static const _maxResultDepth = 32;
 
-  final SaluAssistantKeyStore _keyStore;
-  final ChatGptSession? _chatgpt;
-  final HttpClient Function() _newClient;
+  final InferenceGateway? _gateway;
+  final SaluAssistantKeyStore? _keyStore;
+  final OperationFence _fence;
+  late final EndpointTransport _transport;
+  late final ChatGptSession? _chatgpt;
+  final bool _ownsChatGpt;
   final Duration _requestTimeout;
   Future<void>? _keyChange;
-  int _keyRevision = 0;
   bool _asking = false;
-  HttpClient? _activeClient;
 
-  /// Indicates a saved key, not verified API access or billing status.
-  Future<bool> get isConnected async => _chatgpt != null
-      ? _chatgpt.isConnected
-      : await _readKey(_keyRevision) != null;
+  /// Indicates a saved credential/session, not verified API access or billing.
+  Future<bool> get isConnected async {
+    if (_gateway != null) return _gateway.isConnected;
+    return _chatgpt != null
+        ? _chatgpt.isConnected
+        : await _readKey(_fence.capture()) != null;
+  }
+
+  /// Display label for the active connected provider, or `null` when
+  /// disconnected.
+  Future<String?> get activeProviderLabel async {
+    if (_gateway != null) return _gateway.activeProviderLabel;
+    if (_chatgpt != null) {
+      return await _chatgpt.isConnected ? 'ChatGPT' : null;
+    }
+    return await _readKey(_fence.capture()) != null ? 'OpenAI' : null;
+  }
+
+  /// Neutral provenance identifier for the active connected provider, or
+  /// `null` when disconnected.
+  Future<String?> get activeProviderProvenance async {
+    if (_gateway != null) return _gateway.activeProviderProvenance;
+    if (_chatgpt != null) {
+      return await _chatgpt.isConnected
+          ? EndpointProfile.reservedChatGptId
+          : null;
+    }
+    return await _readKey(_fence.capture()) != null ? 'openaiResponses' : null;
+  }
 
   Future<void> signInWithChatGpt() async {
-    await _changeKey(() => _chatgpt!.signIn(), storageOnly: false);
+    final chatgpt = _chatgpt;
+    if (chatgpt == null) {
+      throw StateError('ChatGPT sign-in is not configured on this assistant.');
+    }
+    await _changeKey(chatgpt.signIn, storageOnly: false);
   }
 
   /// Save a key locally. Its authorization is first checked by an explicit ask.
   Future<void> connect(String key) async {
+    if (_keyStore == null) {
+      throw StateError('Direct API key storage is not configured.');
+    }
     final normalized = key.trim();
     if (!_isValidKey(normalized)) {
       throw const SaluAssistantException(SaluAssistantErrorCode.invalidKey);
@@ -156,11 +222,16 @@ final class SaluAssistant {
     await _changeKey(() => _keyStore.write(normalized));
   }
 
-  /// Forget the local key and abort any local in-flight request. This cannot
-  /// undo a submission that OpenAI has already received or revoke the API key.
-  Future<void> disconnect() =>
-      _changeKey(_chatgpt == null ? _keyStore.delete : _chatgpt.signOut,
-          storageOnly: _chatgpt == null);
+  /// Forget the local credential/session and abort any local in-flight request.
+  Future<void> disconnect() {
+    if (_gateway != null) {
+      return _gateway.disconnect();
+    }
+    return _changeKey(
+      _chatgpt == null ? _keyStore!.delete : _chatgpt.signOut,
+      storageOnly: _chatgpt == null,
+    );
+  }
 
   /// Send only the supplied inputs. Returns an untrusted JSON object whose
   /// task-specific fields must still be validated by the caller.
@@ -168,16 +239,33 @@ final class SaluAssistant {
     required String instructions,
     required String prompt,
     List<Uint8List> images = const [],
+    InferenceTask task = InferenceTask.mealPhoto,
+    String? requestId,
   }) async {
+    if (_gateway != null) {
+      return _gateway.ask(
+        instructions: instructions,
+        prompt: prompt,
+        images: images,
+        task: task,
+        requestId: requestId,
+      );
+    }
     if (_asking) {
       throw const SaluAssistantException(SaluAssistantErrorCode.busy);
     }
     _asking = true;
-    final revision = _keyRevision;
+    final epoch = _fence.capture();
+    final stopwatch = Stopwatch()..start();
+    Duration remaining() {
+      final left = _requestTimeout - stopwatch.elapsed;
+      return left.isNegative ? Duration.zero : left;
+    }
+
     try {
       // Encode before waiting on storage, so a caller cannot accidentally
       // change the submitted bytes by reusing a mutable image buffer.
-      var body = _makeBody(instructions, prompt, images);
+      final payload = _makePayload(instructions, prompt, images);
       String? key;
       if (_chatgpt != null) {
         try {
@@ -187,47 +275,86 @@ final class SaluAssistant {
           // sign-out clears its local credentials in ChatGptSession.
         }
         if (!await _chatgpt.isConnected) {
+          _checkFence(epoch);
           throw const SaluAssistantException(
-              SaluAssistantErrorCode.notConnected);
+            SaluAssistantErrorCode.notConnected,
+          );
         }
         try {
-          key = await _chatgpt.accessToken();
-          final model = await _chatgpt.model(key);
-          final json = jsonDecode(utf8.decode(body)) as Map<String, dynamic>;
-          json['model'] = model;
-          json['stream'] = true;
-          json.remove('max_output_tokens');
-          body = utf8.encode(jsonEncode(json));
-        } on Object {
-          _checkRevision(revision);
+          await _chatgpt.runWithBudget(
+            deadline: remaining(),
+            fence: _fence,
+            epoch: epoch,
+            action: () async {
+              key = await _chatgpt.accessToken();
+              final model = await _chatgpt.model(key!);
+              payload['model'] = model;
+              payload['stream'] = true;
+              payload.remove('max_output_tokens');
+            },
+          );
+        } on SaluAssistantException {
+          _checkFence(epoch);
+          rethrow;
+        } on TimeoutException {
+          _checkFence(epoch);
+          throw const SaluAssistantException(SaluAssistantErrorCode.timeout);
+        } on SocketException {
+          _checkFence(epoch);
           throw const SaluAssistantException(
-              SaluAssistantErrorCode.authenticationFailed);
+            SaluAssistantErrorCode.networkError,
+          );
+        } on HttpException {
+          _checkFence(epoch);
+          throw const SaluAssistantException(
+            SaluAssistantErrorCode.networkError,
+          );
+        } on Object {
+          _checkFence(epoch);
+          throw const SaluAssistantException(
+            SaluAssistantErrorCode.authenticationFailed,
+          );
         }
       } else {
-        key = await _readKey(revision);
+        key = await _readKey(epoch);
       }
-      _checkRevision(revision);
+
+      _checkFence(epoch);
       if (key == null) {
         throw const SaluAssistantException(SaluAssistantErrorCode.notConnected);
       }
-      try {
-        final client = _activeClient = _newClient();
-        final result = await _post(client, key, body, stream: _chatgpt != null)
-            .timeout(_requestTimeout);
-        _checkRevision(revision);
-        return result;
-      } on SaluAssistantException {
-        _checkRevision(revision);
-        rethrow;
-      } on TimeoutException {
-        _checkRevision(revision);
-        throw const SaluAssistantException(SaluAssistantErrorCode.timeout);
-      } on Object {
-        _checkRevision(revision);
-        throw const SaluAssistantException(SaluAssistantErrorCode.networkError);
-      }
+
+      final headers = <String, String>{
+        HttpHeaders.authorizationHeader: 'Bearer $key',
+      };
+      final envelope = _chatgpt != null
+          ? await _transport.sendSse(
+              uri: _endpoint,
+              method: 'POST',
+              headers: headers,
+              body: payload,
+              allowInsecureLocal: false,
+              fence: _fence,
+              maxBytes: _maxResponseBytes,
+              deadline: remaining(),
+              epoch: epoch,
+            )
+          : await _transport.send(
+              uri: _endpoint,
+              method: 'POST',
+              headers: headers,
+              body: payload,
+              allowInsecureLocal: false,
+              fence: _fence,
+              maxBytes: _maxResponseBytes,
+              deadline: remaining(),
+              epoch: epoch,
+            );
+      _checkFence(epoch);
+      final result = _parseEnvelope(envelope, key!);
+      _checkFence(epoch);
+      return result;
     } finally {
-      _closeRequest();
       _asking = false;
     }
   }
@@ -235,27 +362,20 @@ final class SaluAssistant {
   static bool _isValidKey(String key) =>
       key.length <= 512 && _keyPattern.stringMatch(key) == key;
 
-  static HttpClient _createHttpClient() =>
-      HttpClient()..connectionTimeout = const Duration(seconds: 10);
-
-  void _checkRevision(int revision) {
-    if (_keyRevision != revision) {
+  void _checkFence(int epoch) {
+    if (!_fence.isCurrent(epoch)) {
       throw const SaluAssistantException(
         SaluAssistantErrorCode.connectionChanged,
       );
     }
   }
 
-  void _closeRequest() {
-    final client = _activeClient;
-    _activeClient = null;
-    client?.close(force: true);
-  }
-
   Future<void> _changeKey(Future<void> Function() change,
       {bool storageOnly = true}) {
-    _keyRevision++;
-    _closeRequest();
+    _fence.invalidate();
+    if (_chatgpt != null && !_ownsChatGpt) {
+      _chatgpt.invalidate();
+    }
     final previous = _keyChange;
     final next = () async {
       try {
@@ -273,11 +393,13 @@ final class SaluAssistant {
     return next;
   }
 
-  Future<String?> _readKey(int revision) async {
+  Future<String?> _readKey(int epoch) async {
     // Fail closed if a prior key mutation failed (especially a failed delete).
     await _keyChange;
-    final key = await _withStorage(_keyStore.read);
-    if (_keyRevision != revision || key == null || !_isValidKey(key)) {
+    final keyStore = _keyStore;
+    if (keyStore == null) return null;
+    final key = await _withStorage(keyStore.read);
+    if (!_fence.isCurrent(epoch) || key == null || !_isValidKey(key)) {
       return null;
     }
     return key;
@@ -293,7 +415,7 @@ final class SaluAssistant {
     }
   }
 
-  static List<int> _makeBody(
+  static Map<String, Object?> _makePayload(
     String instructions,
     String prompt,
     List<Uint8List> images,
@@ -321,37 +443,36 @@ final class SaluAssistant {
       mimeTypes.add(_imageMimeType(image));
     }
 
-    return utf8.encode(
-      jsonEncode({
-        'model': _configuredModel.trim().isEmpty
-            ? _defaultModel
-            : _configuredModel.trim(),
-        'store': false,
-        'max_output_tokens': 2048,
-        'text': {
-          'format': {'type': 'json_object'},
+    return <String, Object?>{
+      'model': _configuredModel.trim().isEmpty
+          ? _defaultModel
+          : _configuredModel.trim(),
+      'store': false,
+      'max_output_tokens': 2048,
+      'text': <String, Object?>{
+        'format': <String, Object?>{'type': 'json_object'},
+      },
+      'input': <Map<String, Object?>>[
+        <String, Object?>{
+          'role': 'developer',
+          'content': 'Return exactly one JSON object.\n\n$instructions',
         },
-        'input': [
-          {
-            'role': 'developer',
-            'content': 'Return exactly one JSON object.\n\n$instructions',
-          },
-          {
-            'role': 'user',
-            'content': [
-              if (hasPrompt) {'type': 'input_text', 'text': prompt},
-              for (var i = 0; i < images.length; i++)
-                {
-                  'type': 'input_image',
-                  'detail': 'auto',
-                  'image_url':
-                      'data:${mimeTypes[i]};base64,${base64Encode(images[i])}',
-                },
-            ],
-          },
-        ],
-      }),
-    );
+        <String, Object?>{
+          'role': 'user',
+          'content': <Map<String, Object?>>[
+            if (hasPrompt)
+              <String, Object?>{'type': 'input_text', 'text': prompt},
+            for (var i = 0; i < images.length; i++)
+              <String, Object?>{
+                'type': 'input_image',
+                'detail': 'auto',
+                'image_url':
+                    'data:${mimeTypes[i]};base64,${base64Encode(images[i])}',
+              },
+          ],
+        },
+      ],
+    };
   }
 
   static String _imageMimeType(Uint8List bytes) {
@@ -370,140 +491,21 @@ final class SaluAssistant {
     return true;
   }
 
-  Future<Map<String, dynamic>> _post(
-      HttpClient client, String key, List<int> body,
-      {bool stream = false}) async {
-    final request = await client.postUrl(_endpoint);
-    // A transport completing late must not upload after disconnect or timeout.
-    if (!identical(_activeClient, client)) {
-      throw const SaluAssistantException(
-        SaluAssistantErrorCode.connectionChanged,
-      );
-    }
-    request.followRedirects = false;
-    request.headers
-      ..contentType = ContentType.json
-      ..set(HttpHeaders.acceptHeader,
-          stream ? 'text/event-stream' : 'application/json')
-      ..set(HttpHeaders.authorizationHeader, 'Bearer $key');
-    request.contentLength = body.length;
-    request.add(body);
-    final response = await request.close();
-    final status = response.statusCode;
-    if (status == HttpStatus.tooManyRequests) {
-      // Inspect only the machine-readable quota code. Never surface the body.
-      final error = await _readQuotaError(response);
-      throw SaluAssistantException(error);
-    }
-    if (status != HttpStatus.ok) {
-      throw SaluAssistantException(switch (status) {
-        HttpStatus.unauthorized => SaluAssistantErrorCode.authenticationFailed,
-        HttpStatus.forbidden => SaluAssistantErrorCode.accessDenied,
-        HttpStatus.requestTimeout ||
-        HttpStatus.gatewayTimeout =>
-          SaluAssistantErrorCode.timeout,
-        >= 500 && < 600 => SaluAssistantErrorCode.serviceUnavailable,
-        _ => SaluAssistantErrorCode.requestRejected,
-      });
-    }
-    final responseBody = await _readBody(response);
-    if (!stream) return _parseResult(responseBody, key);
-    // SSE events may span multiple data lines. Only a terminal completion is
-    // accepted; partial text is never treated as a successful estimate.
-    for (final event in responseBody.split(RegExp(r'\r?\n\r?\n'))) {
-      final data = event
-          .split(RegExp(r'\r?\n'))
-          .where((line) => line.startsWith('data:'))
-          .map((line) => line.substring(5).trimLeft())
-          .join('\n');
-      if (data.isEmpty || data == '[DONE]') continue;
-      final Object? decoded;
-      try {
-        decoded = jsonDecode(data);
-      } on FormatException {
-        throw _invalidResponse;
-      }
-      if (decoded is Map<String, dynamic>) {
-        if (decoded['type'] == 'response.completed' &&
-            decoded['response'] is Map) {
-          return _parseResult(jsonEncode(decoded['response']), key);
-        }
-        if (decoded['type'] == 'response.failed' ||
-            decoded['type'] == 'error') {
-          final response = decoded['response'];
-          final error = response is Map ? response['error'] : decoded['error'];
-          final code = error is Map ? error['code'] : null;
-          if (code == 'subscription_sharing_usage_limit_exceeded' ||
-              code == 'subscription_sharing_usage_unavailable') {
-            throw const SaluAssistantException(
-                SaluAssistantErrorCode.quotaExceeded);
-          }
-          throw const SaluAssistantException(
-              SaluAssistantErrorCode.requestRejected);
-        }
-        if (decoded['type'] == 'response.incomplete') {
-          throw const SaluAssistantException(
-              SaluAssistantErrorCode.incompleteResponse);
-        }
-      }
-    }
-    throw const SaluAssistantException(
-        SaluAssistantErrorCode.incompleteResponse);
-  }
-
-  static Future<SaluAssistantErrorCode> _readQuotaError(
-    HttpClientResponse response,
-  ) async {
-    try {
-      final Object? body = jsonDecode(await _readBody(response));
-      if (body
-          case {
-            'error': {
-              'code': 'insufficient_quota' ||
-                  'subscription_sharing_usage_limit_exceeded' ||
-                  'subscription_sharing_usage_unavailable'
-            }
-          }) {
-        return SaluAssistantErrorCode.quotaExceeded;
-      }
-    } on FormatException {
-      // An unreadable body does not change the meaning of HTTP 429.
-    } on SaluAssistantException {
-      // An oversized body does not change the meaning of HTTP 429 either.
-    }
-    return SaluAssistantErrorCode.rateLimited;
-  }
-
-  static Future<String> _readBody(HttpClientResponse response) async {
-    if (response.contentLength > _maxResponseBytes) throw _invalidResponse;
-    final bytes = BytesBuilder(copy: false);
-    await for (final chunk in response) {
-      if (chunk.length > _maxResponseBytes - bytes.length) {
-        throw _invalidResponse;
-      }
-      bytes.add(chunk);
-    }
-    try {
-      return utf8.decode(bytes.takeBytes());
-    } on FormatException {
-      throw _invalidResponse;
-    }
-  }
-
   static const _invalidResponse = SaluAssistantException(
     SaluAssistantErrorCode.invalidResponse,
   );
 
-  static Map<String, dynamic> _parseResult(String body, String key) {
+  static Map<String, dynamic> _parseEnvelope(
+    Map<String, dynamic> envelope,
+    String key,
+  ) {
     try {
-      final Object? envelope = jsonDecode(body);
       if (envelope case {'status': 'incomplete'}) {
         throw const SaluAssistantException(
           SaluAssistantErrorCode.incompleteResponse,
         );
       }
-      if (envelope is! Map<String, dynamic> ||
-          envelope['status'] != 'completed' ||
+      if (envelope['status'] != 'completed' ||
           envelope['error'] != null ||
           envelope['output'] is! List<Object?>) {
         throw _invalidResponse;

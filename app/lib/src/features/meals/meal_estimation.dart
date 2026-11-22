@@ -1,11 +1,37 @@
 import 'package:flutter/foundation.dart';
 import 'package:salu_core/salu_core.dart';
+import 'package:salu_data/salu_data.dart';
 
 import '../../assistant/assistant.dart';
+import '../../assistant/operation_fence.dart';
+import '../../data_transfer/data_write_gate.dart';
+import '../../media/managed_media_store.dart';
 import 'meal_editor_ai.dart';
 import 'meal_editor_images.dart';
 
-final activeMealEstimates = ValueNotifier<Set<String>>(const {});
+/// Scoped tracker for meal IDs with an in-flight AI estimate request.
+class ActiveMealEstimates extends ValueNotifier<Set<String>> {
+  ActiveMealEstimates() : super(const <String>{});
+
+  bool contains(String mealId) => value.contains(mealId);
+
+  bool tryStart(String mealId) {
+    if (value.contains(mealId)) return false;
+    value = <String>{...value, mealId};
+    return true;
+  }
+
+  void finish(String mealId) {
+    if (!value.contains(mealId)) return;
+    value = <String>{...value}..remove(mealId);
+  }
+
+  void reset() {
+    if (value.isNotEmpty) {
+      value = const <String>{};
+    }
+  }
+}
 
 /// Runs only after an explicit request. A pending row never schedules a future
 /// upload: after process death it is simply available for a manual retry.
@@ -13,39 +39,75 @@ Future<void> estimateSavedMeal({
   required PhotoMeal meal,
   required PhotoMealRepository repository,
   required SaluAssistant assistant,
+  required ManagedMediaStore media,
   required String Function() newId,
+  ActiveMealEstimates? activeEstimates,
+  MealEstimateStatusStore? statusStore,
+  OperationFence? fence,
+  DataWriteGate? gate,
 }) async {
-  if (activeMealEstimates.value.contains(meal.id) || meal.items.isNotEmpty) {
+  if (meal.items.isNotEmpty) return;
+  if (activeEstimates != null && !activeEstimates.tryStart(meal.id)) {
     return;
   }
-  activeMealEstimates.value = {...activeMealEstimates.value, meal.id};
+  final epoch = fence?.capture();
   try {
     var items = const <PhotoMealItem>[];
+    String? errorCode;
     try {
       final response = await assistant.ask(
         instructions: mealEstimateInstructions,
         prompt: mealEstimatePrompt(meal.caption),
         images: [
-          if (meal.photoPath case final path?) await encodeMealUpload(path)
+          if (meal.photoPath case final path?)
+            await encodeMealUpload(path, media: media),
         ],
+        task: InferenceTask.mealPhoto,
+        requestId: meal.id,
       );
-      items = parseMealEstimate(response)
+      final rawProvenance = await assistant.activeProviderProvenance;
+      final provenance = (rawProvenance == null || rawProvenance.trim().isEmpty)
+          ? defaultMealEstimateProvenance
+          : '${rawProvenance.trim()}-meal-estimate';
+      items = parseMealEstimate(response, provenance: provenance)
           .map((item) => item.copyWith(id: newId()))
           .toList();
-    } catch (_) {
-      // The local record already exists. It remains editable and retryable.
+    } on SaluAssistantException catch (error) {
+      errorCode = error.code.name;
+    } on FormatException {
+      errorCode = SaluAssistantErrorCode.invalidResponse.name;
+    } on Object {
+      errorCode = SaluAssistantErrorCode.serviceUnavailable.name;
     }
-    await repository.replace(
-        meal.copyWith(
-          items: items,
-          estimateStatus: items.isEmpty
-              ? MealEstimateStatus.unavailable
-              : MealEstimateStatus.complete,
-        ),
-        meal.revision);
+    final updated = meal.copyWith(
+      items: items,
+      estimateStatus: items.isEmpty
+          ? MealEstimateStatus.unavailable
+          : MealEstimateStatus.complete,
+    );
+    Future<void> commit() async {
+      if (fence != null && epoch != null && !fence.isCurrent(epoch)) {
+        return;
+      }
+      if (statusStore != null) {
+        await statusStore.finish(
+          updated,
+          meal.revision,
+          errorCode: items.isEmpty ? errorCode : null,
+        );
+      } else {
+        await repository.replace(updated, meal.revision);
+      }
+    }
+
+    if (gate != null) {
+      await gate.runWrite(commit);
+    } else {
+      await commit();
+    }
   } catch (_) {
     // A storage failure leaves the original saved row and the explicit retry.
   } finally {
-    activeMealEstimates.value = {...activeMealEstimates.value}..remove(meal.id);
+    activeEstimates?.finish(meal.id);
   }
 }

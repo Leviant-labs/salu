@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'allergens.dart';
 import 'food.dart';
 import 'nutrients.dart';
 import 'photo_meal.dart';
@@ -49,7 +50,8 @@ final class RecipeVersion {
       this.method = '',
       this.minServings = .5,
       this.maxServings = 3,
-      Set<String>? allergens})
+      Set<String>? allergens,
+      this.allergenSource})
       : ingredients = List.unmodifiable(ingredients),
         allergens = allergens == null ? null : Set.unmodifiable(allergens) {
     if (id.isEmpty ||
@@ -80,7 +82,10 @@ final class RecipeVersion {
   final List<RecipeIngredient> ingredients;
 
   /// Null means no sufficient ingredient/allergen declaration is available.
+  /// An empty set means none of the 14 canonical allergens were declared in
+  /// listed ingredients — never a cross-contamination guarantee.
   final Set<String>? allergens;
+  final String? allergenSource;
   String get key => '$id@$version';
 
   bool accepts(double portions) =>
@@ -273,20 +278,60 @@ List<RecipePortion> rankRecipePortions({
   return candidates.map((candidate) => candidate.value).toList(growable: false);
 }
 
-bool recipeEligible(RecipeVersion recipe,
+List<String> recipeIneligibilityReasons(RecipeVersion recipe,
     {Iterable<String> exclusions = const [],
     Iterable<String> strictAllergens = const [],
     int? cookingLimit}) {
-  // A declaration of an empty set is distinct from unknown status.
-  if (strictAllergens.isNotEmpty &&
-      (recipe.allergens == null ||
-          strictAllergens.any(
-              (term) => recipe.allergens!.any((tag) => _matches(tag, term))))) {
-    return false;
+  final reasons = <String>[];
+  final strictTerms = [
+    for (final term in strictAllergens)
+      if (term.trim().isNotEmpty) term.trim(),
+  ];
+  if (strictTerms.isNotEmpty) {
+    final parsed = resolveStrictAllergens(strictTerms);
+    for (final term in parsed.unresolved) {
+      reasons.add('unresolvedStrictAllergen:$term');
+    }
+    if (recipe.allergens == null) {
+      reasons.add('unknownAllergenStatus');
+    } else {
+      final matched = <AllergenId>{};
+      var hasUnknownTag = false;
+      for (final tag in recipe.allergens!) {
+        final id = resolveAllergen(tag);
+        if (id == null) {
+          hasUnknownTag = true;
+        } else if (parsed.known.contains(id) && matched.add(id)) {
+          reasons.add('containsAllergen:${id.name}');
+        }
+      }
+      if (hasUnknownTag) {
+        reasons.add('unknownAllergenStatus');
+      }
+    }
   }
-  return (cookingLimit == null || recipe.prepMinutes <= cookingLimit) &&
-      !exclusions.any((term) => _recipeMentions(recipe, term));
+  for (final raw in exclusions) {
+    final term = raw.trim();
+    if (term.isNotEmpty && _recipeMentions(recipe, term)) {
+      final code = 'excludedIngredient:$term';
+      if (!reasons.contains(code)) reasons.add(code);
+    }
+  }
+  if (cookingLimit != null && recipe.prepMinutes > cookingLimit) {
+    reasons.add('cookingLimit');
+  }
+  return List.unmodifiable(reasons);
 }
+
+bool recipeEligible(RecipeVersion recipe,
+        {Iterable<String> exclusions = const [],
+        Iterable<String> strictAllergens = const [],
+        int? cookingLimit}) =>
+    recipeIneligibilityReasons(recipe,
+            exclusions: exclusions,
+            strictAllergens: strictAllergens,
+            cookingLimit: cookingLimit)
+        .isEmpty;
 
 bool _recipeMentions(RecipeVersion recipe, String term) =>
     _matches(recipe.name, term) ||
@@ -295,13 +340,9 @@ bool _recipeMentions(RecipeVersion recipe, String term) =>
         _matches(ingredient.purchaseName, term));
 
 bool _matches(String name, String term) {
-  String normalize(String value) => value
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
-      .trim();
-  final key = normalize(term);
+  final key = normalizeAllergenText(term);
   if (key.isEmpty) return false;
-  final haystack = ' ${normalize(name)} ';
+  final haystack = ' ${normalizeAllergenText(name)} ';
   final singular = key.endsWith('s') && key.length > 3
       ? key.substring(0, key.length - 1)
       : key;

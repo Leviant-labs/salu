@@ -7,23 +7,34 @@ target design.
 
 ## Working slice
 
-Today renders photo cards by meal slot and combines original diary rows with
-meal snapshots for totals. The meal is saved before AI runs; Drift's diary watch
-updates the card after a successful revision-checked enrichment. The editor
-supports reviewed label evidence per item and correction previews for saved meals.
-Photos are app-support files; meal records store their paths. The food library
-offers catalogue search, saved foods and meals, and versioned recipes. The Plan
-workspace uses resolved recipes and bounded portions and derives the shopping
-list from the confirmed plan. The local check-in reads diary, weight, and activity
-observations and compares them to user-declared intentions.
+Today renders the daily nutrition summary (`DiarySummary`) above photo cards by
+meal slot and combines original diary rows with meal snapshots for totals,
+exposing partial/estimated/unknown states semantically. The meal is saved before
+AI runs; Drift's diary watch updates the card after a successful revision-checked
+enrichment. The editor anchors its primary Save action in a keyboard-aware
+`SafeArea` footer and supports reviewed label evidence per item and correction
+previews for saved meals. Photos are app-support files; meal records store their
+paths. First-run setup runs a seven-page resumable wizard backed by a revisioned
+SQLite draft that commits atomically to the planning profile on finish (or marks
+setup skipped), while Settings keeps a compact optional-field profile editor and
+Plan edits food preferences directly. The food library offers catalogue search
+and a stateful 4-tab `/search/library` route (`Foods`, `Meals`, `Recipes`,
+`Leftovers`) with live filtering and lazy list builders. The Plan workspace uses
+resolved recipes and bounded portions and derives the shopping list from the
+confirmed plan. The local check-in reads diary, weight, and activity observations
+and compares them to user-declared intentions. The UI defaults to a dark-luxury
+emerald-accented glassmorphic/neumorphic theme (`SaluSurfaceTokens`,
+`GlassSurface`, `SaluTactileButton`, `SaluTactileToggle`) with an accessible
+light fallback, `en` and `pt_PT` localization via `flutter gen-l10n`, and
+locale-aware number formatting (`localized_numbers.dart`).
 
 ## Modules
 
 | Module | Depends on | Owns |
 | --- | --- | --- |
-| `salu_core` | Dart SDK only | Domain types, nutrition arithmetic, diary time semantics, typed commands, ports for storage / health / inference |
-| `salu_data` | `salu_core`, drift, sqlite3 | Schema, migrations, diary repositories and bundled catalogue |
-| `app` | both, Flutter, Riverpod, go_router | UI, composition root, media and secure-storage adapters, OpenAI transport, feature repository wiring |
+| `salu_core` | Dart SDK only | Domain types, nutrition arithmetic, diary time semantics, meal revision (`reviseMealItem`), planning value types and math (`PlanService`), typed commands, ports for storage / health / inference |
+| `salu_data` | `salu_core`, drift, sqlite3 | Schema, migrations, diary repositories, library & week-plan repositories (`FoodLibraryRepository`, `RecipeLibraryRepository`, `WeekPlanRepository`), and bundled catalogue |
+| `app` | both, Flutter, Riverpod, go_router | UI, feature controllers (`MealEditorController`, `PlanController`, `LibraryController`), composition root, media and secure-storage adapters, ChatGPT OAuth and BYOK protocol adapters (`InferenceGateway`), feature repository wiring |
 
 The boundary is enforced mechanically, not by convention: `salu_core`'s pubspec
 has no Flutter, drift, or HTTP dependency, and `tool/check_boundaries.sh` greps
@@ -110,11 +121,13 @@ inventory and creates a meal in the same transaction.
 
 ## Provider and health boundaries
 
-The working adapter is `SaluAssistant`, an app-side OpenAI Responses API client
-using a user-supplied API key in platform secure storage. It is not ChatGPT-plan
-authorization. The meal and plan flows each disclose their payload and require
-an explicit request. Provider output and OCR text are untrusted data; neither
-can call a repository directly. `HealthPort` remains an interface.
+`SaluAssistant` delegates to `InferenceGateway` (scoped per Riverpod `ProviderScope`), which routes requests strictly to the single explicitly selected connection with zero automatic provider or model fallback:
+
+- **ChatGPT plan authorization (`chatgpt-plan`):** browser PKCE OAuth via `ChatGptSession` (with JWKS ID-token verification, token refresh, and SSE Responses transport). Eligible ChatGPT plan limits apply.
+- **BYOK endpoint profiles:** named `EndpointProfile` metadata persisted in `local_documents` (`endpoint-connections`) paired with opaque `salu.endpoint.<id>.<gen>` slots in `SecureCredentialStore`. Supports OpenAI Chat Completions (`/chat/completions`), OpenAI Responses (`/responses`), and Anthropic Messages (`/messages`), explicit bounded `GET` model discovery (`models`/`catalogue`) or manual model IDs, and explicit opt-in for loopback/private-network `http://` (public `http://` is rejected). Changing an endpoint's origin or protocol requires re-entering the API key; connection mutations invalidate `OperationFence` to abort in-flight work.
+- **Compatibility note:** Real-service compatibility across live ChatGPT, OpenAI, and Anthropic endpoints is unverified until manually tested with opt-in credentials outside automated fixture/mock tests.
+
+The meal, label, check-in, and plan flows each disclose the active provider destination (and potential plan limits or API billing) and require an explicit user request. Provider output and OCR text are untrusted data; neither can call a repository directly. Safe meal-estimation failure codes persist separately in `MealEstimateStatusStore` (`estimate:<meal-id>`) bound to the meal revision without changing `PhotoMeal` JSON. `HealthPort` remains an interface.
 Local meal autosave never authorizes an external health write. Preserve separate
 user confirmation, permissions, origin tracking, idempotency, and reconciliation
 as specified in [Health exchange](product-spec.md#health-exchange).
@@ -161,10 +174,18 @@ Photo + text + label images
   commit. A dislike affects ranking unless the user makes it an exclusion.
   Grocery aggregation uses the validated plan; local search and manual editing
   support the same workspace without a provider. Plan is never intake.
-- Onboarding writes editable starting weight, goals/targets, preferences, and any
-  optional dietary or activity intentions through ordinary app commands. Policy
-  gates automatic target proposals and the user confirms them; optional intentions
-  do not trigger target changes or bypass review.
+- First-run onboarding (`OnboardingWizard`, `OnboardingController`, and
+  `OnboardingStore`) walks across seven pages: Welcome, goals/activity,
+  starting weight, food preferences, declared daily targets, optional AI setup,
+  and Review. Draft progress persists in `local_documents` (`onboarding-draft`)
+  on each step so restarts resume where the user left off. Users can skip setup
+  from Welcome or skip individual pages; all inputs remain optional with no
+  automatic target calculations, the AI setup step makes no network calls and
+  authorizes no meal/photo uploads, and finishing commits `planning-profile`
+  and clears the draft atomically. Settings retains the compact `_ProfileEditor`
+  with all fields optional, and Plan uses `FoodPreferencesScreen`. Policy gates
+  automatic target proposals and the user confirms them; optional intentions do
+  not trigger target changes or bypass review.
 - Versioned regional imports stage and atomically activate international food
   datasets while preserving source provenance and user records. Search installed
   data across regions offline. No-match flows can accept a supported generic

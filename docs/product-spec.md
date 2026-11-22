@@ -201,9 +201,18 @@ eating time.
 
 ### 5.1 Onboarding and baseline
 
-- Onboarding lets users record a starting weight, choose a goal, enter or review
-  calorie/macro targets, and set food preferences, dislikes, and exclusions.
-  Let users skip optional inputs, edit them later, or start with neutral logging.
+- First-run onboarding uses a resumable seven-page wizard (Welcome, goals and
+  routine, starting weight, food preferences, declared calorie/macro targets,
+  optional AI setup, and Review) that saves progress locally step-by-step so
+  reopening resumes at the last step.
+- Every input is optional (blank numeric fields stay unset rather than required),
+  and no automatic calorie or macro targets are calculated during onboarding.
+  Users can go back while keeping entered answers, skip individual steps, skip
+  the entire setup from Welcome to start with neutral logging, or finish on
+  Review. The optional AI setup step never authorizes meal or photo uploads.
+- Afterward, **Settings → Planning profile** provides compact profile editing
+  with all inputs optional, and **Plan** provides preference-only editing for
+  likes, dislikes, exclusions, and strict allergies.
 - Support cut, maintain, and gain goals with user-editable calorie/macro targets.
 - Users may also choose optional, non-prescriptive dietary or activity changes
   they want to try. Treat these as editable preferences or intentions, not medical

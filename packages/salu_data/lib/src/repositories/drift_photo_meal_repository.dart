@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:salu_core/salu_core.dart';
 
-import '../codec.dart';
+import '../codec/recipe_codec.dart';
 import '../database/app_database.dart';
 
 final class DriftPhotoMealRepository implements LivePhotoMealRepository {
@@ -42,8 +42,11 @@ final class DriftPhotoMealRepository implements LivePhotoMealRepository {
           recordedOffsetMinutes: row.recordedOffsetMinutes,
           items: (jsonDecode(row.itemsJson) as List)
               .indexed
-              .map((entry) =>
-                  _decodeItem(entry.$2, '${row.id}:legacy:${entry.$1}'))
+              .map((entry) => decodePhotoMealItem(
+                    entry.$2,
+                    fallbackId: '${row.id}:legacy:${entry.$1}',
+                    strict: false,
+                  ))
               .toList(),
         ),
     ];
@@ -77,44 +80,17 @@ final class DriftPhotoMealRepository implements LivePhotoMealRepository {
           ..where((t) =>
               t.id.equals(meal.id) & t.revision.equals(expectedRevision)))
         .write(PhotoMealsCompanion(
+      diaryDate: Value(meal.date.toIso()),
       slot: Value(meal.slot.name),
       caption: Value(meal.caption),
       revision: Value(expectedRevision + 1),
+      photoPath: Value(meal.photoPath),
       estimateStatus: Value(meal.estimateStatus.name),
       itemsJson: Value(_encodeItems(meal.items)),
     ));
     return count == 1;
   }
 
-  String _encodeItems(List<PhotoMealItem> items) => jsonEncode([
-        for (final item in items)
-          {
-            'id': item.id,
-            'name': item.name,
-            if (item.portion case final portion?) 'amount': portion.amount,
-            if (item.portion case final portion?) 'unit': portion.unit.name,
-            'nutrients': item.nutrients.toJson(),
-            'source': item.source,
-            'labelPaths': item.labelPaths,
-          },
-      ]);
-
-  PhotoMealItem _decodeItem(Object? raw, String fallbackId) {
-    final row = raw as Map<String, dynamic>;
-    return PhotoMealItem(
-      name: row['name'] as String,
-      id: row['id'] as String? ?? fallbackId,
-      portion: row['amount'] == null
-          ? null
-          : MealPortion(
-              (row['amount'] as num).toDouble(),
-              MealUnit.values.byName(row['unit'] as String),
-            ),
-      nutrients:
-          NutrientProfile.fromJson(decodeJsonMap(jsonEncode(row['nutrients']))),
-      labelPath: row['labelPath'] as String?,
-      labelPaths: (row['labelPaths'] as List?)?.cast<String>() ?? const [],
-      source: row['source'] as String?,
-    );
-  }
+  String _encodeItems(List<PhotoMealItem> items) =>
+      jsonEncode([for (final item in items) encodePhotoMealItem(item)]);
 }
