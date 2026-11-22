@@ -83,6 +83,58 @@ if [[ -f "$plist" ]]; then
   fi
 fi
 
+# mobile_scanner requires iOS 15.5+; align Xcode project, AppFrameworkInfo, and Podfile.
+ios_min_version=15.5
+
+pbxproj=ios/Runner.xcodeproj/project.pbxproj
+if [[ -f "$pbxproj" ]]; then
+  tmp="$(mktemp)"
+  awk -v v="$ios_min_version" '
+    {
+      gsub(/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/, "IPHONEOS_DEPLOYMENT_TARGET = " v ";")
+      print
+    }
+  ' "$pbxproj" > "$tmp"
+  mv "$tmp" "$pbxproj"
+fi
+
+app_framework_plist=ios/Flutter/AppFrameworkInfo.plist
+if [[ -f "$app_framework_plist" ]]; then
+  if [[ -x /usr/libexec/PlistBuddy ]]; then
+    /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion $ios_min_version" "$app_framework_plist" 2>/dev/null || :
+  else
+    tmp="$(mktemp)"
+    awk -v v="$ios_min_version" '
+      prev_min && /<string>[^<]*<\/string>/ {
+        sub(/<string>[^<]*<\/string>/, "<string>" v "</string>")
+        prev_min = 0
+      }
+      /<key>MinimumOSVersion<\/key>/ { prev_min = 1 }
+      { print }
+    ' "$app_framework_plist" > "$tmp"
+    mv "$tmp" "$app_framework_plist"
+  fi
+fi
+
+flutter_root="${FLUTTER_ROOT:-$(cd "$(dirname "$(command -v flutter)")/.." && pwd)}"
+podfile_template="$flutter_root/packages/flutter_tools/templates/cocoapods/Podfile-ios"
+podfile=ios/Podfile
+if [[ ! -f "$podfile" && -f "$podfile_template" ]]; then
+  cp -p "$podfile_template" "$podfile"
+fi
+if [[ -f "$podfile" ]]; then
+  tmp="$(mktemp)"
+  awk -v v="$ios_min_version" '
+    !updated && /^[[:space:]]*#?[[:space:]]*platform[[:space:]]+:ios,/ {
+      printf "platform :ios, '\''%s'\''\n", v
+      updated = 1
+      next
+    }
+    { print }
+  ' "$podfile" > "$tmp"
+  mv "$tmp" "$podfile"
+fi
+
 # Flutter's default main manifest omits permissions and Auto Backup exclusion.
 manifest=android/app/src/main/AndroidManifest.xml
 if [[ -f "$manifest" ]]; then

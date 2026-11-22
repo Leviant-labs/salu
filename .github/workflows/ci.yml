@@ -130,6 +130,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free runner disk space for Android emulator
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL
+          df -h
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -175,8 +185,9 @@ jobs:
           api-level: 35
           target: default
           arch: x86_64
+          disk-size: 3072M
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
           script: |
             set -euo pipefail
             mkdir -p artifacts/emulator-smoke
